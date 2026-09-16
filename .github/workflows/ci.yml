@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  frontend-static:
+    name: 前端静态自检
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: 运行断言（内联 JS 语法 / DOM id 引用 / 单元断言）
+        run: node tests/test-frontend-static.js
+
+  python-check:
+    name: Python 语法与导入检查
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # 只做字节码编译：launcher.py / app.py 依赖 Windows 专属模块，不能在 Linux 上执行
+      - name: 编译检查
+        run: python -m py_compile server.py launcher.py app.py build_exe.py tasks_all.py
+
+      # server.py 是零依赖后端，可以真正导入；顺带验证数据根解析不炸
+      - name: 导入 server.py 并检查数据根解析
+        run: |
+          python - <<'PY'
+          import os, server
+          print("server.py imported ok")
+          print("REPO       =", server.REPO)
+          print("AUTHS_DIR  =", server.AUTHS_DIR)
+          assert server.REPO, "REPO 解析不得为空"
+          PY
+
+      - name: 校验 index.html 为自包含单文件（无外部资源依赖）
+        run: |
+          python - <<'PY'
+          import re, sys
+          html = open("index.html", encoding="utf-8").read()
+          ext = re.findall(r'(?:src|href)\s*=\s*["\'](https?:)?//[^"\']+', html)
+          cdn = [u for u in ext if "127.0.0.1" not in u and "localhost" not in u]
+          if cdn:
+              print("发现外部资源引用：", cdn[:5])
+              sys.exit(1)
+          print("index.html 无外部资源依赖 ok")
+          PY
+
+      - name: 确认仓库未混入凭据 / 运行态文件
+        run: |
+          python - <<'PY'
+          import os, sys
+          bad_dirs = {"auths", "data", "logs", "dist", "build", "bin", ".workbuddy", ".app-profile"}
+          bad_files = {"config-native.json", ".runtime.json"}
+          found = []
+          for root, dirs, files in os.walk("."):
+              dirs[:] = [d for d in dirs if d not in {".git", "__pycache__"}]
+              for d in list(dirs):
+                  if d in bad_dirs:
+                      found.append(os.path.join(root, d))
+              for f in files:
+                  if f in bad_files or f.endswith(".log"):
+                      found.append(os.path.join(root, f))
+          if found:
+              print("不该出现在仓库里的路径：")
+              for p in found[:20]:
+                  print("  ", p)
+              sys.exit(1)
+          print("工作区干净：无凭据 / 日志 / 构建产物 ok")
+          PY

@@ -1,0 +1,21 @@
+# 统一换行符，避免跨平台协作时整文件 diff 抖动
+#
+# 源码一律 LF；Windows 脚本保持 CRLF（cmd.exe 对 LF 的 .bat 兼容性不稳）。
+
+* text=auto eol=lf
+
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+*.sh   text eol=lf
+
+# 二进制文件不做换行转换
+*.exe   binary
+*.dll   binary
+*.zip   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.tflite binary

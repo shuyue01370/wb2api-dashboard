@@ -1,0 +1,2102 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorkBuddy2API 控制面板</title>
+<style>
+:root{
+  --bg:#0d1117; --bg2:#010409; --panel:#161b22; --panel2:#1c2129;
+  --bd:#272e38; --bd2:#30363d; --tx:#e6edf3; --tx2:#9aa4b2; --tx3:#6e7681;
+  --ac:#58a6ff; --ac-dim:#1f6feb33;
+  --ok:#3fb950; --okbg:#3fb9501f;
+  --warn:#d29922; --warnbg:#d299221f;
+  --bad:#f85149; --badbg:#f851491f;
+  --pur:#bc8cff; --cyan:#39c5cf; --blue:#58a6ff;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  --radius:10px;
+}
+html[data-theme="light"]{
+  --bg:#f6f8fa; --bg2:#eaeef2; --panel:#ffffff; --panel2:#f6f8fa;
+  --bd:#d0d7de; --bd2:#d8dee4; --tx:#1f2328; --tx2:#59636e; --tx3:#818b98;
+  --ac:#0969da; --ac-dim:#0969da1a;
+  --ok:#1a7f37; --okbg:#1a7f3714;
+  --warn:#9a6700; --warnbg:#9a670014;
+  --bad:#cf222e; --badbg:#cf222e14;
+  --pur:#8250df; --cyan:#1b7c83; --blue:#0969da;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--tx);
+  font:13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif}
+body{padding-bottom:60px}
+a{color:var(--ac);text-decoration:none}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:var(--tx3)}
+
+/* ---------- 页签 ---------- */
+.tabbar{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 16px}
+.tabbtn{font-size:12.5px;padding:7px 14px;border-radius:9px;border:1px solid var(--bd2);
+  background:var(--panel);color:var(--tx2);cursor:pointer;font-weight:600;font-family:inherit;
+  display:inline-flex;align-items:center;gap:7px}
+.tabbtn:hover{border-color:var(--ac);color:var(--tx)}
+.tabbtn.on{border-color:var(--ac);color:var(--ac);background:var(--ac-dim)}
+.tabbtn .n{font-size:10px;font-weight:400;padding:1px 6px;border-radius:999px;
+  background:var(--panel2);border:1px solid var(--bd);color:var(--tx2)}
+.tabbtn.on .n{border-color:var(--ac);color:var(--ac)}
+.tabbtn .n.bad{border-color:var(--warn);color:var(--warn)}
+.pane{display:none}
+.pane.on{display:block}
+
+/* ---------- 接口探针结果 ---------- */
+.probe{margin-top:9px;border:1px solid var(--bd);border-radius:8px;background:var(--panel2);overflow:hidden}
+.probe .pbh{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:9px 11px;
+  border-bottom:1px solid var(--bd);font-size:12px}
+.probe .pbd{padding:10px 11px;max-height:340px;overflow:auto;white-space:pre-wrap;
+  word-break:break-all;font-family:var(--mono);font-size:11px;color:var(--tx2);line-height:1.6}
+
+/* ---------- 执行中 / 结果反馈 ---------- */
+.spin{display:inline-block;width:9px;height:9px;border:1.5px solid currentColor;
+  border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;
+  vertical-align:-1px;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.actstatus{border-radius:8px;padding:9px 12px;font-size:12px;margin-bottom:11px;
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;line-height:1.6}
+.actstatus .t{font-weight:600}
+.actstatus .sub{opacity:.8;font-size:11px}
+.actstatus.run{border:1px solid var(--ac);background:var(--ac-dim);color:var(--ac)}
+.actstatus.ok{border:1px solid var(--ok);background:var(--okbg);color:var(--ok)}
+.actstatus.bad{border:1px solid var(--bad);background:var(--badbg);color:var(--bad)}
+
+/* ---------- top bar ---------- */
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:14px;
+  padding:10px 18px;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--bd)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.logo{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--ac),var(--pur));color:#fff;font-size:16px;flex:0 0 auto}
+.title{font-size:14px;font-weight:650;letter-spacing:.2px;white-space:nowrap}
+.sub{font-size:11px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topright{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;
+  border:1px solid var(--bd2);font-size:11.5px;background:var(--panel);white-space:nowrap}
+.pill.ok{border-color:var(--ok);color:var(--ok);background:var(--okbg)}
+.pill.warn{border-color:var(--warn);color:var(--warn);background:var(--warnbg)}
+.pill.bad{border-color:var(--bad);color:var(--bad);background:var(--badbg)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--tx3);flex:0 0 auto}
+.dot.ok{background:var(--ok);box-shadow:0 0 0 3px var(--okbg)}
+.dot.warn{background:var(--warn);box-shadow:0 0 0 3px var(--warnbg)}
+.dot.bad{background:var(--bad);box-shadow:0 0 0 3px var(--badbg);animation:pulse 1.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ---------- buttons ---------- */
+.btn{appearance:none;border:1px solid var(--bd2);background:var(--panel2);color:var(--tx);
+  padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;transition:.13s;font-family:inherit}
+.btn:hover{border-color:var(--ac);background:var(--ac-dim)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
+.btn.primary:hover{filter:brightness(1.12);background:var(--ac)}
+.btn.danger:hover{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:11.5px;border-radius:7px}
+.btn.block{width:100%;justify-content:center;text-align:center}
+select,input[type=text],input[type=number]{background:var(--panel2);color:var(--tx);
+  border:1px solid var(--bd2);border-radius:7px;padding:5px 8px;font-size:12px;font-family:inherit}
+select:focus,input:focus{outline:none;border-color:var(--ac)}
+label.chk{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2);cursor:pointer;user-select:none}
+label.chk input{accent-color:var(--ac)}
+
+/* ---------- layout ---------- */
+main{padding:16px 18px;display:flex;flex-direction:column;gap:16px;max-width:1720px;margin:0 auto}
+.panel{background:var(--panel);border:1px solid var(--bd);border-radius:var(--radius);padding:14px 16px}
+.panel>h2{margin:0 0 12px;font-size:13px;font-weight:650;letter-spacing:.3px;
+  display:flex;align-items:center;gap:8px}
+.panel>h2 .tag{font-weight:400;font-size:11px;color:var(--tx3);margin-left:auto}
+.grid2{display:grid;grid-template-columns:minmax(0,1.32fr) minmax(0,1fr);gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media(max-width:1180px){.grid2,.grid3{grid-template-columns:1fr}}
+.muted{color:var(--tx2)}.dim{color:var(--tx3)}
+.mono{font-family:var(--mono)}
+.nowrap{white-space:nowrap}
+.empty{padding:18px;text-align:center;color:var(--tx3);font-size:12px}
+
+/* ---------- kpis ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:10px}
+.kpi{background:var(--panel);border:1px solid var(--bd);border-radius:var(--radius);
+  padding:11px 13px;position:relative;overflow:hidden}
+.kpi .k{font-size:11px;color:var(--tx2);display:flex;align-items:center;gap:5px}
+.kpi .v{font-size:22px;font-weight:680;margin-top:3px;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .s{font-size:10.5px;color:var(--tx3);margin-top:1px}
+.kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bd2)}
+.kpi.ok::after{background:var(--ok)} .kpi.ok .v{color:var(--ok)}
+.kpi.warn::after{background:var(--warn)} .kpi.warn .v{color:var(--warn)}
+.kpi.bad::after{background:var(--bad)} .kpi.bad .v{color:var(--bad)}
+.kpi.info::after{background:var(--ac)} .kpi.info .v{color:var(--ac)}
+.kpi.pur::after{background:var(--pur)} .kpi.pur .v{color:var(--pur)}
+
+/* ---------- actions ---------- */
+.acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:12px}
+.act{border:1px solid var(--bd);border-radius:9px;padding:11px 12px;background:var(--panel2);
+  display:flex;flex-direction:column;gap:9px}
+.act .ah{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600}
+.act .ad{font-size:11.5px;color:var(--tx2);line-height:1.5}
+.act .arow{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.act .cmd{font-family:var(--mono);font-size:10.5px;color:var(--tx3);background:var(--bg2);
+  border:1px solid var(--bd);border-radius:6px;padding:5px 7px;overflow-x:auto;white-space:pre;
+  word-break:normal;line-height:1.45}
+.badge{font-size:10px;padding:1px 6px;border-radius:5px;border:1px solid var(--bd2);color:var(--tx2)}
+.badge.exp{border-color:var(--warn);color:var(--warn);background:var(--warnbg)}
+.badge.ok{border-color:var(--ok);color:var(--ok);background:var(--okbg)}
+
+/* ---------- tables ---------- */
+.tblwrap{overflow:auto;max-height:560px;border:1px solid var(--bd);border-radius:8px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+th{position:sticky;top:0;z-index:2;background:var(--panel2);text-align:left;font-weight:600;
+  font-size:11px;color:var(--tx2);padding:8px 10px;border-bottom:1px solid var(--bd);white-space:nowrap}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{color:var(--ac)}
+td{padding:8px 10px;border-bottom:1px solid var(--bd);vertical-align:middle}
+tbody tr:hover{background:var(--panel2)}
+tbody tr:last-child td{border-bottom:none}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.uid{font-family:var(--mono);font-size:10.5px;color:var(--tx3)}
+
+/* ---------- state badge ---------- */
+.st{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;
+  font-size:11px;font-weight:600;border:1px solid;white-space:nowrap}
+.st.healthy{color:var(--ok);border-color:var(--ok);background:var(--okbg)}
+.st.soft{color:var(--warn);border-color:var(--warn);background:var(--warnbg)}
+.st.hard{color:var(--bad);border-color:var(--bad);background:var(--badbg)}
+.st.breaker{color:var(--pur);border-color:var(--pur);background:color-mix(in srgb,var(--pur) 14%,transparent)}
+.st.disabled{color:var(--bad);border-color:var(--bad);background:var(--badbg);opacity:.85}
+.st.full{color:var(--blue);border-color:var(--blue);background:var(--ac-dim)}
+.bar{height:5px;border-radius:3px;background:var(--bd);overflow:hidden;min-width:52px}
+.bar>i{display:block;height:100%;border-radius:3px;background:var(--ok)}
+.bar>i.w{background:var(--warn)} .bar>i.b{background:var(--bad)}
+
+/* ---------- failover chain ---------- */
+.chain{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+.chain .node{flex:1 1 190px;min-width:170px;border:1px solid var(--bd);background:var(--panel2);
+  border-radius:9px;padding:10px 11px;position:relative;opacity:.5;transition:.2s}
+.chain .node.active{opacity:1;border-color:var(--ac);box-shadow:0 0 0 1px var(--ac),0 0 18px -6px var(--ac)}
+.chain .node.active .nl{color:var(--ac)}
+.chain .node.dead{opacity:.85;border-color:var(--bad)}
+.chain .node.dead .nl{color:var(--bad)}
+.chain .arrow{display:grid;place-items:center;padding:0 7px;color:var(--tx3);font-size:15px}
+.chain .nl{font-size:11px;font-weight:700;letter-spacing:.4px;margin-bottom:5px;color:var(--tx2)}
+.chain .nt{font-size:11.5px;color:var(--tx2);line-height:1.5}
+.chain .nn{margin-top:6px;font-size:13px;font-weight:680;font-variant-numeric:tabular-nums}
+@media(max-width:900px){.chain{flex-direction:column}.chain .arrow{transform:rotate(90deg);padding:3px 0}}
+
+/* ---------- lists ---------- */
+.ul{list-style:none;margin:0;padding:0}
+.ul li{display:flex;gap:9px;align-items:flex-start;padding:7px 2px;border-bottom:1px solid var(--bd);font-size:12px}
+.ul li:last-child{border-bottom:none}
+.ul .t{font-family:var(--mono);font-size:10.5px;color:var(--tx3);flex:0 0 62px;padding-top:1px}
+.ul .c{flex:1;min-width:0;word-break:break-word}
+.rank{display:inline-grid;place-items:center;width:19px;height:19px;border-radius:6px;
+  background:var(--panel2);border:1px solid var(--bd2);font-size:10.5px;font-weight:700;flex:0 0 auto}
+.rank.r1{background:var(--ac);border-color:var(--ac);color:#fff}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12px}
+.kv dt{color:var(--tx2);white-space:nowrap}
+.kv dd{margin:0;font-family:var(--mono);font-size:11.5px;word-break:break-all}
+
+/* ---------- console ---------- */
+.console{background:var(--bg2);border:1px solid var(--bd);border-radius:8px;
+  font-family:var(--mono);font-size:11.5px;line-height:1.6;padding:9px 11px;
+  max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.console .l{display:block}
+.console .l.err{color:var(--bad)}
+.console .l.ok{color:var(--ok)}
+.console .l.skip{color:var(--warn)}
+.console .l.cmd{color:var(--ac)}
+.jobtabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}
+.jobtab{font-size:11px;padding:3px 9px;border-radius:999px;border:1px solid var(--bd2);
+  background:var(--panel2);cursor:pointer;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.jobtab.sel{border-color:var(--ac);color:var(--ac);background:var(--ac-dim)}
+.jobtab .rc{font-size:10px;margin-left:5px}
+.jobtab.running{border-color:var(--warn)}
+
+/* ---------- misc ---------- */
+.code{font-family:var(--mono);font-size:11.5px;background:var(--bg2);border:1px solid var(--bd);
+  border-radius:7px;padding:9px 11px;overflow-x:auto;white-space:pre;color:var(--tx2);line-height:1.6}
+details{border:1px solid var(--bd);border-radius:8px;background:var(--panel2)}
+details>summary{cursor:pointer;padding:8px 11px;font-size:12px;font-weight:600;user-select:none}
+details[open]>summary{border-bottom:1px solid var(--bd)}
+details .dbody{padding:10px 12px}
+.hr{height:1px;background:var(--bd);margin:11px 0}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;
+  font-size:11px;background:var(--panel2);border:1px solid var(--bd2);color:var(--tx2);margin:0 5px 5px 0}
+.chip b{color:var(--tx);font-weight:600}
+.warnbox{border:1px solid var(--warn);background:var(--warnbg);color:var(--warn);
+  border-radius:8px;padding:8px 11px;font-size:11.5px;line-height:1.55}
+.errbox{border:1px solid var(--bad);background:var(--badbg);color:var(--bad);
+  border-radius:8px;padding:8px 11px;font-size:11.5px;line-height:1.55}
+.toast{position:fixed;bottom:18px;right:18px;z-index:200;display:flex;flex-direction:column;gap:8px}
+.toast>div{background:var(--panel);border:1px solid var(--bd2);border-left:3px solid var(--ac);
+  border-radius:8px;padding:8px 13px;font-size:12px;box-shadow:0 8px 26px -8px #000a;animation:slide .18s}
+.toast>div.ok{border-left-color:var(--ok)} .toast>div.bad{border-left-color:var(--bad)}
+@keyframes slide{from{transform:translateX(16px);opacity:0}}
+.flash{animation:flash .8s}
+@keyframes flash{0%{background:var(--ac-dim)}100%{background:transparent}}
+/* ---------------- OAuth 授权弹窗 ---------------- */
+.mask{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;z-index:80}
+.mask.on{display:flex}
+.modal{width:min(600px,92vw);background:var(--panel);border:1px solid var(--bd2);border-radius:14px;
+  box-shadow:0 18px 50px #0008;overflow:hidden}
+.modal .mh{display:flex;align-items:center;justify-content:space-between;padding:13px 17px;border-bottom:1px solid var(--bd)}
+.modal .mh b{font-size:13.5px}
+.modal .mx{border:0;background:none;color:var(--tx3);font-size:15px;cursor:pointer;padding:2px 7px;border-radius:6px}
+.modal .mx:hover{background:var(--panel2);color:var(--tx)}
+.modal .mb{padding:15px 17px 17px}
+.modal .steps{display:flex;gap:6px;margin-bottom:13px}
+.modal .steps span{flex:1;text-align:center;font-size:11px;padding:7px 0;border-radius:8px;
+  border:1px solid var(--bd2);background:var(--panel2);color:var(--tx3)}
+.modal .steps span.on{border-color:var(--ac);background:var(--ac-dim);color:var(--ac);font-weight:600}
+.modal .steps span.done{border-color:var(--ok);background:var(--okbg);color:var(--ok)}
+.urlrow{display:flex;gap:8px;align-items:center;margin:9px 0 6px}
+.urlrow input{flex:1;font-family:var(--mono);font-size:11.5px;padding:8px 10px;border-radius:8px;
+  border:1px solid var(--bd2);background:var(--bg2);color:var(--tx);min-width:0}
+.waitbox{display:flex;align-items:center;gap:8px;justify-content:center;margin-top:11px;padding:9px;
+  border:1px solid var(--ac);background:var(--ac-dim);color:var(--ac);border-radius:8px;font-size:12px}
+.waitbox.done{border-color:var(--ok);background:var(--okbg);color:var(--ok)}
+.waitbox.err{border-color:var(--bad);background:var(--badbg);color:var(--bad)}
+.ltabs{display:flex;gap:6px;margin-bottom:13px;background:var(--panel2);border:1px solid var(--bd2);
+  border-radius:9px;padding:4px}
+.ltabs span{flex:1;text-align:center;font-size:11.5px;padding:8px 0;border-radius:7px;cursor:pointer;
+  color:var(--tx3);user-select:none}
+.ltabs span:hover{color:var(--tx)}
+.ltabs span.on{background:var(--ac);color:#fff;font-weight:600}
+.ltab textarea{width:100%;box-sizing:border-box;margin-bottom:9px;padding:8px 10px;border-radius:8px;
+  border:1px solid var(--bd2);background:var(--bg2);color:var(--tx);font-family:var(--mono);
+  font-size:11px;resize:vertical}
+.notebox{margin-top:13px;border:1px solid var(--bd);background:var(--panel2);border-radius:9px;
+  padding:10px 13px;font-size:11.5px;line-height:1.75}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">◈</div>
+    <div style="min-width:0">
+      <div class="title">WorkBuddy2API 控制面板</div>
+      <div class="sub" id="svcLine">正在连接…</div>
+    </div>
+  </div>
+  <div class="topright">
+    <span class="pill" id="healthPill"><span class="dot"></span><span>探活中</span></span>
+    <span class="pill" id="dockerPill"><span class="dot"></span><span>Docker</span></span>
+    <span class="pill" id="acctPill"><span class="dot"></span><span>—</span></span>
+    <label class="chk"><input type="checkbox" id="autoRefresh" checked>自动刷新</label>
+    <select id="intervalSel" title="刷新间隔">
+      <option value="3">3s</option><option value="5" selected>5s</option>
+      <option value="10">10s</option><option value="30">30s</option>
+    </select>
+    <button class="btn primary" id="btnRefresh">刷新</button>
+    <button class="btn sm" id="btnTheme" title="切换主题">◐</button>
+  </div>
+</header>
+
+<main>
+  <nav class="tabbar" id="mainTabs"></nav>
+  <div id="alertBox"></div>
+
+  <!-- ① 概览 -->
+  <div class="pane" id="pane-overview">
+    <section class="kpis" id="kpis"></section>
+    <section class="panel">
+      <h2>定时排程 <span class="tag">config.schedule · 服务端自动执行</span></h2>
+      <div id="sched" class="grid3"></div>
+    </section>
+    <section class="panel">
+      <h2>配置全览 <span class="tag">config.json</span></h2>
+      <div id="cfg" class="grid3"></div>
+    </section>
+  </div>
+
+  <!-- ② 账号池 -->
+  <div class="pane" id="pane-pool">
+    <div class="grid2">
+      <section class="panel">
+        <h2>账号池 <span class="tag" id="accTag"></span></h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+          <input type="text" id="accFilter" placeholder="按昵称 / uid 过滤…" style="flex:1;min-width:150px">
+          <label class="chk"><input type="checkbox" id="onlyActive">仅显示非健康</label>
+        </div>
+        <div class="tblwrap"><table><thead><tr id="accHead"></tr></thead><tbody id="accBody"></tbody></table></div>
+      </section>
+
+      <section class="panel">
+        <h2>选号逻辑模拟 <span class="tag">按 Go 端三因子公式复现</span></h2>
+        <div id="pickSim"></div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top:14px">
+      <h2>本机 WorkBuddy 客户端 <span class="tag" id="localTag"></span></h2>
+      <div id="localAccounts"></div>
+    </section>
+  </div>
+
+  <!-- ③ 自动切换 -->
+  <div class="pane" id="pane-failover">
+    <section class="panel">
+      <h2>账号不可用时的自动切换 <span class="tag">降级链路 + 真实事件</span></h2>
+      <div class="chain" id="chain"></div>
+      <div class="hr"></div>
+      <div id="failoverExtra"></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
+        <h2>事件时间线 <span class="tag" id="evTag"></span></h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+          <label class="chk"><input type="checkbox" id="evOnlyImp">只看切换/异常</label>
+          <button class="btn sm" id="btnEvClear">清空视图</button>
+        </div>
+        <div class="ul" id="evList" style="max-height:420px;overflow:auto"></div>
+      </section>
+
+      <section class="panel">
+        <h2>实时日志 <span class="tag" id="logTag">docker logs -f 跟随</span></h2>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <label class="chk"><input type="checkbox" id="logAuto" checked>自动滚动</label>
+          <button class="btn sm" id="btnLogClear">清空</button>
+        </div>
+        <div class="console" id="logView" style="max-height:420px"></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ④ 运维操作 -->
+  <div class="pane" id="pane-ops">
+    <section class="panel">
+      <h2>一键操作 <span class="tag">所有动作通过本地面板执行，不修改 workbuddy2api 仓库文件</span></h2>
+      <!-- 状态条 + 作业输出放在按钮上方：点完立刻能看到反馈，不用往下翻 -->
+      <div id="actStatus"></div>
+      <div id="jobArea" style="margin-bottom:14px;display:none">
+        <div class="jobtabs" id="jobTabs"></div>
+        <div class="console" id="jobOut"></div>
+      </div>
+      <div class="acts" id="acts"></div>
+    </section>
+
+    <section class="panel">
+      <h2>账号文件 / 持久化状态 / 运行形态</h2>
+      <div id="files"></div>
+    </section>
+  </div>
+
+  <!-- ⑤ 接口测试 -->
+  <div class="pane" id="pane-api">
+    <section class="panel">
+      <h2>接口测试与调用示例 <span class="tag">点「测试此接口」真实请求 7863，返回原始状态码 / 耗时 / 响应体</span></h2>
+      <div id="apiHelp"></div>
+      <div id="apiTestOut"></div>
+    </section>
+
+    <section class="panel">
+      <h2>模型列表 <span class="tag">GET /v1/models</span></h2>
+      <div id="models"></div>
+    </section>
+  </div>
+
+  <!-- ⑥ 接入教程 -->
+  <div class="pane" id="pane-tut">
+    <section class="panel">
+      <h2>一键导入 cc-switch <span class="tag">ccswitch:// 深链协议 · 不用手填配置</span></h2>
+      <div id="ccswitch"></div>
+    </section>
+    <section class="panel">
+      <h2>客户端接入教程 <span class="tag">Claude Code · Codex · Cline · Continue · Aider · Cursor …</span></h2>
+      <div id="tut"></div>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+var $=function(s,r){return (r||document).querySelector(s)};
+var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var S={meta:null,status:null,health:null,models:null,events:[],evSeq:0,logSeq:0,
+       log:[],localEv:[],prevState:{},jobs:[],selJob:null,timer:null,countdown:null,
+       tab:"overview",pending:{},jobPending:{},statusTimer:null};
+
+/* ---------------- utils ---------------- */
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function num(n){if(n==null||isNaN(n))return "0";return Number(n).toLocaleString("en-US")}
+function zeroT(t){return !t||String(t).indexOf("0001-01-01")===0}
+function dur(sec){
+  sec=Math.max(0,Math.floor(sec||0));
+  if(sec<60)return sec+"秒";
+  var m=Math.floor(sec/60),h=Math.floor(m/60),d=Math.floor(h/24);
+  if(d>0)return d+"天"+((h%24)?(h%24)+"小时":"");
+  if(h>0)return h+"小时"+((m%60)?(m%60)+"分":"");
+  return m+"分"+(sec%60)+"秒";
+}
+function ago(t){
+  if(!t)return "—";
+  var ts=(typeof t==="number")?t*1000:Date.parse(t);
+  if(isNaN(ts)||ts<=0)return "—";
+  var s=(Date.now()-ts)/1000;
+  if(s<0)return "刚刚";
+  if(s<60)return Math.floor(s)+"秒前";
+  if(s<3600)return Math.floor(s/60)+"分前";
+  if(s<86400)return Math.floor(s/3600)+"小时前";
+  return Math.floor(s/86400)+"天前";
+}
+function hhmmss(t){
+  if(!t)return "--:--:--";
+  var ts=(typeof t==="number")?t*1000:Date.parse(t);
+  if(isNaN(ts))return "--:--:--";
+  var d=new Date(ts);
+  return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0")+":"+String(d.getSeconds()).padStart(2,"0");
+}
+function toast(msg,kind){
+  var el=document.createElement("div");el.className=kind||"";el.textContent=msg;
+  $("#toast").appendChild(el);
+  setTimeout(function(){el.style.opacity="0";el.style.transition="opacity .3s";
+    setTimeout(function(){el.remove()},320)},2600);
+}
+function copy(text,label){
+  function done(){toast((label||"已复制")+" ✓","ok")}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done,function(){fallback()});
+  } else fallback();
+  function fallback(){
+    var ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";
+    ta.style.opacity="0";document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");done()}catch(e){toast("复制失败，请手动选择","bad")}
+    ta.remove();
+  }
+}
+function jget(url){return fetch(url,{cache:"no-store"}).then(function(r){return r.json()})}
+function jpost(url,body){return fetch(url,{method:"POST",cache:"no-store",
+  headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})})
+  .then(function(r){return r.json()})}
+
+/* ---------------- account state ---------------- */
+// 口径严格对齐 Go 端 pool.statusOf / CountsDetailed：
+//   cooling = now < until || now < breakerUntil   （含常规冷却与熔断）
+//   cool_remaining_sec 只算 until（不含熔断），熔断剩余需用 breaker_until 单独算
+function stateOf(a,cfg){
+  if(a.disabled) return {k:"disabled",label:"已禁用",cls:"disabled",
+    detail:a.disabled_reason||"session 失效，需重新登录"};
+  var now=Date.now();
+  var untilT=zeroT(a.until)?0:Date.parse(a.until);
+  var breakT=zeroT(a.breaker_until)?0:Date.parse(a.breaker_until);
+  var untilAct=untilT&&now<untilT, breakAct=breakT&&now<breakT;
+  if(breakAct&&(!untilAct||breakT>=untilT)){
+    return {k:"breaker",label:"熔断中",cls:"breaker",
+      detail:"连续失败熔断，剩余 "+dur((breakT-now)/1000)+"（重试计数 "+(a.breaker_fails||0)+"）",
+      left:(breakT-now)/1000};
+  }
+  if(untilAct){
+    var hard=a.cool_kind==="hard_credit";
+    return {k:hard?"hard":"soft",label:hard?"余额冷却":"限流冷却",cls:hard?"hard":"soft",
+      detail:(a.reason||"")+"，剩余 "+dur((untilT-now)/1000)+
+        (a.soft_streak>1?"（软退避第 "+a.soft_streak+" 次）":""),
+      left:(untilT-now)/1000, model:a.reason&&a.reason.indexOf("6004")>=0};
+  }
+  var maxf=(cfg&&cfg.pool&&cfg.pool.max_in_flight)||0;
+  if(maxf>0&&(a.in_flight||0)>=maxf)
+    return {k:"full",label:"在途满",cls:"full",detail:"在途 "+a.in_flight+"/"+maxf+"，暂时跳过"};
+  return {k:"healthy",label:"健康",cls:"healthy",detail:"可参与选号"};
+}
+function successRate(a){
+  var s=a.success_count||0,e=a.err_total||0,t=s+e;
+  return t>0?{r:s/t,s:s,e:e,t:t}:{r:null,s:0,e:0,t:0};
+}
+// Go 端 weightOf：1 + 积分比例*10 + 闲置补偿 + 成功率*3（无请求记录给 1.5）
+// 服务端 /status 未透出 lastUsed，闲置补偿不可观测 → 这里只算「可见权重」
+function visibleWeight(a,maxCredits){
+  var w=1.0;
+  if(maxCredits>0)w+=((a.credits||0)/maxCredits)*10;
+  var sr=successRate(a);
+  w+= sr.t>0 ? sr.r*3 : 1.5;
+  return w;
+}
+function isEligible(a,st,cfg){
+  if(st.k==="disabled"||st.k==="breaker"||st.k==="soft"||st.k==="hard")return false;
+  var maxf=(cfg&&cfg.pool&&cfg.pool.max_in_flight)||0;
+  if(maxf>0&&(a.in_flight||0)>=maxf)return false;
+  return true;
+}
+
+/* ---------------- fetch ---------------- */
+function loadMeta(){return jget("/api/meta").then(function(d){S.meta=d;renderMeta()})}
+function loadStatus(){
+  return jget("/api/status").then(function(d){
+    if(d&&d.error){S.status=null;showAlert(d);return}
+    S.status=d;hideAlert();
+    diffStates(d.accounts||[]);
+    renderAll();
+  }).catch(function(e){showAlert({error:"读取 /status 失败",detail:String(e)})})
+}
+function loadHealth(){return jget("/api/health").then(function(d){S.health=d;renderHealth()})}
+function loadModels(){return jget("/api/models").then(function(d){S.models=d;renderModels()})}
+
+function showAlert(o){
+  $("#alertBox").innerHTML='<div class="errbox"><b>'+esc(o.error||"错误")+'</b>'+
+    (o.detail?'<div style="margin-top:3px;opacity:.85">'+esc(typeof o.detail==="string"?o.detail:JSON.stringify(o.detail))+'</div>':'')+
+    (o.hint?'<div style="margin-top:5px;opacity:.85">'+esc(o.hint)+'</div>':'')+'</div>';
+}
+function hideAlert(){$("#alertBox").innerHTML=""}
+
+/* ---------------- local state-diff events（自动切换的可视证据） ---------------- */
+var NONOK={soft:1,hard:1,breaker:1,disabled:1,full:1};
+function diffStates(accounts){
+  var cfg=S.meta&&S.meta.config;
+  accounts.forEach(function(a){
+    var st=stateOf(a,cfg),prev=S.prevState[a.uid];
+    if(prev&&prev!==st.k){
+      var nick=a.nickname||a.uid.slice(0,8);
+      var isBad=NONOK[st.k],wasBad=NONOK[prev];
+      var lv=isBad?(st.k==="disabled"||st.k==="breaker"?"error":"warn"):"info";
+      if(isBad&&!wasBad){
+        pushLocal("failover",lv,"账号「"+nick+"」不可用 → 触发自动切换（"+st.label+"："+st.detail+"）",a.uid);
+      } else if(!isBad&&wasBad){
+        pushLocal("recover","info","账号「"+nick+"」已恢复可用（"+prev+" → 健康）",a.uid);
+      } else {
+        pushLocal("shift","warn","账号「"+nick+"」状态变化："+prev+" → "+st.k,a.uid);
+      }
+    }
+    S.prevState[a.uid]=st.k;
+  });
+}
+function pushLocal(kind,level,text,uid){
+  var last=S.localEv[0];
+  if(last&&last.text===text&&Date.now()-last.recv<3000)return; // 去抖：同一条 3s 内不重复
+  S._lseq=(S._lseq||0)+1;
+  S.localEv.unshift({seq:"L"+S._lseq,ts:new Date().toISOString(),
+    recv:Date.now(),kind:kind,level:level,text:text,uid:uid,local:true});
+  if(S.localEv.length>160)S.localEv.length=160;
+  renderEvents();
+}
+
+/* ---------------- poll events / logs ---------------- */
+function tickEvents(){
+  return jget("/api/events?since="+S.evSeq).then(function(d){
+    if(d.events&&d.events.length){S.evSeq=d.latest;S.events=S.events.concat(d.events);
+      if(S.events.length>600)S.events=S.events.slice(-600)}
+    else if(d.latest)S.evSeq=d.latest;
+    renderEvents();renderChainExtra();
+  }).catch(function(){})
+}
+function tickLogs(){
+  return jget("/api/logs").then(function(d){
+    if(d.lines){S.logSeq=d.latest;S.log=d.lines;renderLogs()}
+  }).catch(function(){})
+}
+
+/* ---------------- 执行中状态 / 按钮防重复点击 ---------------- */
+// 目标：点下去立刻有反馈（按钮转圈 + 顶部常驻状态条），执行期间按钮不可再点，
+// 结束后恢复按钮，并把成功/失败留在状态条上——不能只靠 2.6 秒就消失的 toast。
+function actKey(action,params){
+  var only=(params&&params.only)||"";
+  return only?action+":"+only:action;
+}
+function btnKey(b){
+  return b.hasAttribute("data-test")
+    ? "probe:"+b.getAttribute("data-test")
+    : actKey(b.getAttribute("data-act"),{only:b.getAttribute("data-only")||""});
+}
+function applyPending(){
+  $$("[data-act],[data-test]").forEach(function(b){
+    if(!b.hasAttribute("data-label"))b.setAttribute("data-label",b.innerHTML);
+    var p=S.pending[btnKey(b)];
+    if(p){
+      b.disabled=true;
+      b.innerHTML='<span class="spin"></span>'+esc(p.label||"执行中")+'…';
+    }else if(b.disabled){
+      b.disabled=false;
+      b.innerHTML=b.getAttribute("data-label")||b.innerHTML;
+    }
+  });
+}
+function markPending(key,label){
+  S.pending[key]={label:label,at:Date.now()};
+  applyPending();
+}
+function clearPending(key){
+  delete S.pending[key];
+  applyPending();
+}
+function setActStatus(kind,title,sub){
+  var el=$("#actStatus");if(!el)return;
+  if(!kind){el.className="";el.innerHTML="";return}
+  el.className="actstatus "+kind;
+  el.innerHTML='<span class="t">'+(kind==="run"?'<span class="spin"></span>':"")+esc(title)+'</span>'+
+    (sub?'<span class="sub">'+esc(sub)+'</span>':'');
+}
+function startStatusTicker(){
+  if(S.statusTimer)return;
+  S.statusTimer=setInterval(function(){
+    var keys=Object.keys(S.pending).filter(function(k){return k.indexOf("probe:")!==0});
+    if(!keys.length){clearInterval(S.statusTimer);S.statusTimer=null;return}
+    var p=S.pending[keys[0]];
+    setActStatus("run",p.label+"…","已运行 "+Math.round((Date.now()-p.at)/1000)+" 秒");
+  },1000);
+}
+function revealJobArea(){
+  var el=$("#jobArea");
+  if(!el)return;
+  el.style.display="block";
+  if(el.scrollIntoView)el.scrollIntoView({block:"nearest"});
+}
+
+/* ---------------- actions ---------------- */
+function renderActions(){
+  var key=S.meta?(S.meta.api_key||""):"";
+  var curlCmd='curl.exe -s http://localhost:'+(S.meta?S.meta.api_port:7863)+
+    '/status -H "Authorization: Bearer '+key+'"';
+
+  var html="";
+
+  html+='<div class="act"><div class="ah">🔌 <span>读取账号池状态</span></div>'+
+    '<div class="ad">调用网关只读接口，等价于手动执行下面这条命令；结果同时刷新整页数据。</div>'+
+    '<div class="cmd" id="curlCmd">'+esc(curlCmd)+'</div>'+
+    '<div class="arow"><button class="btn primary sm" data-act="refresh">执行并刷新</button>'+
+    '<button class="btn sm" data-copy="'+esc(curlCmd)+'">复制命令</button>'+
+    '<button class="btn sm" data-act="showraw">查看原始 JSON</button></div></div>';
+
+  var isNative=S.meta&&S.meta.mode==="native";
+
+  html+='<div class="act"><div class="ah">📅 <span>一键每日签到</span><span class="badge ok">推荐</span></div>'+
+    '<div class="ad">对 auths/ 下全部账号执行签到 + 余额查询 + 冷却解冻。等价于官方 signin.sh。</div>'+
+    '<div class="cmd">'+(isNative
+      ?esc('bin\\signin_bin.exe "'+(S.meta?S.meta.auths_dir:"<auths>")+'"')
+      :'docker exec '+esc(S.meta?S.meta.container:"workbuddy2api")+' /app/signin_bin /app/auths')+'</div>'+
+    '<div class="arow"><button class="btn primary sm" data-act="signin">运行签到</button>'+
+    '<span class="dim" style="font-size:11px">签到后余额恢复的冷却账号会自动解冻</span></div></div>';
+
+  html+='<div class="act"><div class="ah">💰 <span>成长计划任务</span></div>'+
+    '<div class="ad">一键把所有账号的任务<b>都接取</b>，然后到 WorkBuddy 客户端自行完成；完成后回来<b>一键领奖</b>。'+
+    '<br><span class="dim">接取只改任务状态、领奖幂等，两者都<b>不产生任何上游上报</b>。</span></div>'+
+    '<div class="arow"><select id="taskAcc" style="flex:1;min-width:130px"><option value="ALL">全部账号</option></select>'+
+    '<label class="chk"><input type="checkbox" id="taskDry">仅预览（不执行）</label></div>'+
+    '<div class="dim" id="taskNote" style="font-size:11px;margin-bottom:7px"></div>'+
+    '<div class="arow">'+
+      '<button class="btn primary sm" data-act="tasks_all" data-only="accept">一键接取所有任务</button>'+
+      '<button class="btn primary sm" data-act="tasks_all" data-only="claim">一键领取所有积分奖励</button>'+
+    '</div>'+
+    '<div class="cmd" id="taskCmd"></div></div>';
+
+  html+='<div class="act"><div class="ah">📊 <span>积分日报 / 明细</span></div>'+
+    '<div class="ad">聚合所有账号的积分包，输出剩余 / 已用 / 总量。JSON 版本便于二次处理。</div>'+
+    '<div class="cmd">'+(isNative
+      ?esc('bin\\credit.exe -pretty')
+      :'docker exec -w /app '+esc(S.meta?S.meta.container:"workbuddy2api")+' /app/credit -pretty')+'</div>'+
+    '<div class="arow"><button class="btn sm" data-act="credit">人类可读日报</button>'+
+    '<button class="btn sm" data-act="credit_json">原始 JSON</button></div></div>';
+
+  html+='<div class="act"><div class="ah">🔑 <span>添加账号</span></div>'+
+    '<div class="ad">三种方式：OAuth 授权 / 粘贴 Token / 从本机客户端导入。'+
+    '成功后<b>自动写入账号池并重载网关</b>，无需手动操作。</div>'+
+    '<div class="arow"><button class="btn primary sm" data-login-open>打开添加账号窗口</button>'+
+    '<span class="dim" style="font-size:11px">等价于账号池页签的「发起授权」</span></div></div>';
+
+  html+='<div class="act"><div class="ah">♻️ <span>重载账号</span></div>'+
+    '<div class="ad">'+(isNative
+      ?'重启网关进程（launcher 会自动拉起），让服务重新扫描 auths/ 目录并加载新登录的账号。会中断当前在途请求。'
+      :'重启容器，让服务重新扫描 auths/ 目录并加载新登录的账号。会中断当前在途请求。')+'</div>'+
+    '<div class="arow"><button class="btn danger sm" data-act="restart">'+(isNative?"重启网关":"重启容器")+'</button>'+
+    '<span class="dim" style="font-size:11px">配置或账号文件变更后需要</span></div></div>';
+
+  $("#acts").innerHTML=html;
+  var ta=$("#taskAcc");
+  if(ta)ta.onchange=updateTasksAllCmd;
+  var td=$("#taskDry");
+  if(td)td.onchange=updateTasksAllCmd;
+  fillTaskAccounts();
+  fillModelOptions();
+  updateTasksAllCmd();
+}
+// 模型名候选：用 /v1/models 的实时结果填充「接口测试」页签的对话测试，避免写死上游可能不存在的模型
+function fillModelOptions(){
+  var dl=$("#modelOpts"),inp=$("#chatModel");
+  if(!dl||!inp)return;
+  var list=(S.models&&S.models.data)||[];
+  if(!list.length)return;
+  var ids=list.map(function(m){return m.id});
+  dl.innerHTML=ids.map(function(id){return '<option value="'+esc(id)+'"></option>'}).join("");
+  if(ids.indexOf(inp.value)<0){
+    var pick=null;
+    for(var i=0;i<ids.length;i++){if(ids[i].indexOf("flash")>=0){pick=ids[i];break}}
+    inp.value=pick||ids[0];
+  }
+  var hint=$("#chatModelHint");
+  if(hint)hint.textContent="共 "+ids.length+" 个可选模型（取自 /v1/models 实时结果）。";
+}
+// 账号下拉独立刷新：保留用户当前选择，避免每次状态刷新都把动作区整个重建
+function fillTaskAccounts(){
+  var sel=$("#taskAcc");
+  if(!sel)return;
+  var accs=(S.status&&S.status.accounts)||[];
+  var keep=sel.value||"ALL";
+  sel.innerHTML='<option value="ALL">全部账号</option>'+accs.map(function(a){
+    return '<option value="'+esc(a.uid||"")+'">'+
+      esc((a.nickname||"未命名")+" · "+String(a.uid||"").slice(0,8))+'</option>'}).join("");
+  var still=false;
+  for(var i=0;i<sel.options.length;i++){if(sel.options[i].value===keep){still=true;break}}
+  sel.value=still?keep:"ALL";
+}
+var TASK_SEG={"accept":"一键接取所有任务","claim":"一键领取所有积分奖励"};
+function updateTasksAllCmd(){
+  var acc=($("#taskAcc")&&$("#taskAcc").value)||"ALL";
+  var dry=$("#taskDry")&&$("#taskDry").checked;
+  var el=$("#taskCmd");
+  if(el){
+    if(S.meta&&S.meta.mode==="native"){
+      el.textContent='set WB2API_SCRIPTS='+(S.meta.scripts_dir||"")+
+        '&& set WB2API_AUTHS='+(S.meta.auths_dir||"")+
+        '&& python tasks_all.py '+acc+(dry?"":" --yes");
+    }else{
+      var img=S.meta?S.meta.image:"";
+      el.textContent='docker run --rm --user root -v "<repo>/scripts:/app/scripts:ro" '+
+        '-v "<面板目录>/tasks_all.py:/app/tasks_all.py:ro" '+
+        '-v "<repo>/auths:/root/workbuddy2api/auths" --entrypoint python3 '+img+
+        ' /app/tasks_all.py '+acc+(dry?"":" --yes");
+    }
+  }
+  var note=$("#taskNote");
+  if(note){
+    note.innerHTML=(dry?
+      '当前为<b>仅预览</b>：只拉取任务清单，不做任何写操作。':
+      '<b>点击即执行</b>：接取会把「未接取」改成「已接取」；领奖对已完成任务逐个尝试（幂等，可重复点）。')+
+      '　范围：'+(acc==="ALL"?"全部账号":"指定账号")+'。';
+  }
+}
+function runAction(action,params,title){
+  var key=actKey(action,params);
+  var label=title||action;
+  markPending(key,label);
+  setActStatus("run",label+"…","正在启动…");
+  startStatusTicker();
+  revealJobArea();
+  return jpost("/api/run",Object.assign({action:action},params||{})).then(function(job){
+    if(job.error){
+      clearPending(key);
+      setActStatus("bad","启动失败",job.error);
+      toast("启动失败："+job.error,"bad");
+      return;
+    }
+    S.jobPending[job.id]=key;
+    S.selJob=job.id;
+    if(S.jobs.indexOf(job.id)<0)S.jobs.unshift(job.id);
+    setActStatus("run",job.title||label+"…","已启动，等待输出…");
+    renderJobs();pollJob(job.id);
+  }).catch(function(e){
+    clearPending(key);
+    setActStatus("bad","请求失败",String(e));
+    toast("请求失败："+e,"bad");
+  });
+}
+function pollJob(id){
+  jget("/api/job?id="+encodeURIComponent(id)).then(function(j){
+    if(j.error)return;
+    var idx=S.jobs.indexOf(j.id);
+    if(idx<0)S.jobs.unshift(j.id);
+    S.jobCache=S.jobCache||{};S.jobCache[j.id]=j;
+    renderJobs();
+    if(j.status==="running"){setTimeout(function(){pollJob(id)},700);return}
+    var ok=(j.exit_code===0);
+    var key=S.jobPending[j.id];
+    if(key){
+      delete S.jobPending[j.id];
+      clearPending(key);
+      setActStatus(ok?"ok":"bad",(ok?"✓ 完成：":"✗ 失败：")+(j.title||""),
+        ok?"退出码 0":"退出码 "+j.exit_code+"（详见上方输出）");
+    }
+    toast((ok?"完成":"失败")+"："+j.title,ok?"ok":"bad");
+    setTimeout(function(){loadStatus()},600);
+  }).catch(function(){})
+}
+function renderJobs(){
+  var c=S.jobCache||{};
+  var ids=S.jobs.slice(0,12);
+  if(!ids.length){$("#jobArea").style.display="none";return}
+  $("#jobArea").style.display="block";
+  $("#jobTabs").innerHTML=ids.map(function(id){
+    var j=c[id];if(!j)return "";
+    var rc=j.status==="running"?"…":(j.exit_code===0?"✓":"✗"+j.exit_code);
+    return '<div class="jobtab'+(id===S.selJob?" sel":"")+(j.status==="running"?" running":"")+
+      '" data-job="'+id+'" title="'+esc(j.cmd)+'">'+esc(j.title)+
+      '<span class="rc">'+rc+'</span></div>'}).join("");
+  var j=c[S.selJob];
+  if(!j&&ids.length){S.selJob=ids[0];j=c[S.selJob]}
+  var out=$("#jobOut");
+  if(!j){out.textContent="";return}
+  var lines=(j.lines||[]).filter(function(l){return l.indexOf("__EXIT__")!==0});
+  out.innerHTML='<span class="l cmd">$ '+esc(j.cmd)+'</span>\n'+
+    lines.map(function(l){
+      var cls="";
+      if(/\[skip\]/.test(l))cls="skip";
+      else if(/\[错误\]|error|Error|FAIL|Traceback|no auth/.test(l))cls="err";
+      else if(/OK|ok$|已签到|完成|reward=|credit=/.test(l))cls="ok";
+      else if(/\[dry-run\]/.test(l))cls="skip";
+      return '<span class="l '+cls+'">'+esc(l)+'</span>';
+    }).join("\n")+
+    (j.status==="running"?'\n<span class="l skip">▌运行中…</span>':
+      '\n<span class="l '+(j.exit_code===0?"ok":"err")+'">▏退出码 '+j.exit_code+'</span>');
+  out.scrollTop=out.scrollHeight;
+}
+
+/* ---------------- render ---------------- */
+function renderMeta(){
+  var m=S.meta;if(!m)return;
+  var isNative=m.mode==="native";
+  $("#svcLine").textContent=(isNative?"原生 wb2api.exe":(m.container||"?"))+" · "+m.api_base+" · 仓库 "+m.repo;
+  var dp=$("#dockerPill");
+  if(isNative){
+    var st=m.container_state||{};
+    if(st.status==="running"){
+      dp.className="pill ok";
+      dp.innerHTML='<span class="dot ok"></span>网关运行中 · 已启动 '+dur(st.uptime_sec||0);
+    } else {
+      dp.className="pill bad";
+      dp.innerHTML='<span class="dot bad"></span>网关进程不在运行';
+    }
+  } else if(!m.docker_available){dp.className="pill bad";dp.innerHTML='<span class="dot bad"></span>Docker 不可用'}
+  else if(m.container_state&&m.container_state.status==="running"){
+    dp.className="pill ok";
+    dp.innerHTML='<span class="dot ok"></span>容器运行中 · 已启动 '+dur(m.container_state.uptime_sec||0);
+  } else {dp.className="pill warn";dp.innerHTML='<span class="dot warn"></span>Docker 可用 · 容器未运行'}
+  renderTabs();renderActions();renderLocalAccounts();renderSched();renderCfg();renderFiles();renderApiHelp();renderCcSwitch();renderTutorial();
+  applyPending(); // 按钮重建后重新套用「执行中」禁用态（否则一次 meta 刷新就把忙碌态冲掉）
+}
+function renderHealth(){
+  var h=S.health,p=$("#healthPill");
+  if(!h||h.error){p.className="pill bad";p.innerHTML='<span class="dot bad"></span>网关不可达';return}
+  var ok=(h.healthy||0)>0;
+  p.className="pill "+(ok?"ok":"warn");
+  p.innerHTML='<span class="dot '+(ok?"ok":"warn")+'"></span>'+(ok?"探活正常 · ":"降级 · ")+
+    h.healthy+"/"+h.total+" 可服务";
+}
+function renderAll(){
+  var d=S.status;if(!d){$("#kpis").innerHTML='<div class="kpi bad"><div class="k">状态</div><div class="v">—</div><div class="s">网关不可达</div></div>';return}
+  var cfg=S.meta&&S.meta.config;
+  var accs=d.accounts||[];
+  var sts=accs.map(function(a){return stateOf(a,cfg)});
+  var nBreak=sts.filter(function(s){return s.k==="breaker"}).length;
+  var nHard=sts.filter(function(s){return s.k==="hard"}).length;
+  var nSoft=sts.filter(function(s){return s.k==="soft"}).length;
+  var nDis=sts.filter(function(s){return s.k==="disabled"}).length;
+  var nFull=sts.filter(function(s){return s.k==="full"}).length;
+  var cred=accs.reduce(function(s,a){return s+(a.credits||0)},0);
+  var inflight=accs.reduce(function(s,a){return s+(a.in_flight||0)},0);
+  var okN=sts.filter(function(s){return s.k==="healthy"||s.k==="full"}).length;
+
+  function k(l,v,s,cls){return '<div class="kpi '+(cls||"")+'"><div class="k">'+l+'</div><div class="v">'+v+'</div><div class="s">'+s+'</div></div>'}
+  $("#kpis").innerHTML=
+    k("账号总数",num(d.total),"auths/ 已加载","info")+
+    k("可服务",num(okN),(d.in_flight_full?d.in_flight_full+" 个在途满":""),"ok")+
+    k("冷却中",num(nSoft+nHard),"软 "+nSoft+" / 余额 "+nHard,(nSoft+nHard)?"warn":"")+
+    k("熔断中",num(nBreak),"连续失败触发的长期封禁",nBreak?"warn":"")+
+    k("已禁用",num(nDis),"session 失效需重登",nDis?"bad":"")+
+    k("在途请求",num(inflight),"上限 "+(cfg&&cfg.pool?cfg.pool.max_in_flight:0)+"/账号")+
+    k("积分合计",num(cred),"所有账号余额之和","pur")+
+    k("存储模式",esc(d.redis_mode||"noop"),(d.redis_mode==="noop"?"纯内存（重启丢失运行态）":"Upstash 持久化"))+
+    k("粘性会话",num(d.sticky_sessions),"会话绑定数");
+
+  var ap=$("#acctPill");
+  ap.className="pill "+(nDis||nBreak?(okN?"warn":"bad"):"ok");
+  ap.innerHTML='<span class="dot '+(nDis||nBreak?(okN?"warn":"bad"):"ok")+'"></span>'+
+    okN+"/"+d.total+" 可用";
+
+  $("#accTag").textContent="共 "+d.total+" 个 · 更新于 "+hhmmss(Date.now());
+  renderAccounts(accs,cfg);
+  renderPickSim(accs,sts,cfg);
+  renderChain(accs,sts,cfg);
+  renderChainExtra();
+  fillTaskAccounts(); // 账号变化后同步动作区的账号下拉（保留已选项）
+  renderTabs();       // 页签角标（账号总数 / 异常数 / 运行中作业数）
+  renderCcSwitch();   // 模型列表变化后同步 cc-switch 深链里的模型名
+}
+function renderAccounts(accs,cfg){
+  var cols=[["name","账号"],["state","状态"],["credits","积分"],["inflight","在途"],
+            ["rate","成功率"],["weight","可见权重"],["fails","连续失败"],
+            ["left","冷却剩余"],["until","解冻时间"],["reason","原因"],
+            ["ls","最近成功"],["le","最近错误"]];
+  $("#accHead").innerHTML=cols.map(function(c,i){
+    return '<th class="sortable" data-sort="'+c[0]+'">'+c[1]+(S.sort===c[0]?(S.sortDir>0?" ▲":" ▼"):"")+'</th>'}).join("");
+  var q=($("#accFilter").value||"").toLowerCase();
+  var onlyAct=$("#onlyActive").checked;
+  var maxC=Math.max.apply(null,[0].concat(accs.map(function(a){return a.credits||0})));
+  var rows=accs.map(function(a){return {a:a,st:stateOf(a,cfg),w:visibleWeight(a,maxC),sr:successRate(a)}});
+  if(q)rows=rows.filter(function(r){
+    return (r.a.nickname||"").toLowerCase().indexOf(q)>=0||(r.a.uid||"").toLowerCase().indexOf(q)>=0});
+  if(onlyAct)rows=rows.filter(function(r){return !isEligible(r.a,r.st,cfg)});
+  var key=S.sort||"state",dir=S.sortDir||1;
+  var order={healthy:0,full:1,soft:2,hard:3,breaker:4,disabled:5};
+  rows.sort(function(x,y){
+    var r=0;
+    if(key==="state")r=(order[x.st.k]||9)-(order[y.st.k]||9);
+    else if(key==="name")r=String(x.a.nickname||"").localeCompare(String(y.a.nickname||""));
+    else if(key==="credits")r=(x.a.credits||0)-(y.a.credits||0);
+    else if(key==="inflight")r=(x.a.in_flight||0)-(y.a.in_flight||0);
+    else if(key==="rate")r=(x.sr.r==null?-1:x.sr.r)-(y.sr.r==null?-1:y.sr.r);
+    else if(key==="weight")r=x.w-y.w;
+    else if(key==="fails")r=(x.a.breaker_fails||0)-(y.a.breaker_fails||0);
+    else if(key==="left")r=((x.st.left||0)-(y.st.left||0));
+    else if(key==="until")r=(Date.parse(x.a.until)||0)-(Date.parse(y.a.until)||0);
+    else if(key==="ls")r=(Date.parse(x.a.last_success)||0)-(Date.parse(y.a.last_success)||0);
+    else if(key==="le")r=(Date.parse(x.a.last_err)||0)-(Date.parse(y.a.last_err)||0);
+    if(r===0)r=String(x.a.uid||"").localeCompare(String(y.a.uid||""));
+    return r*dir;
+  });
+  if(!rows.length){$("#accBody").innerHTML='<tr><td colspan="12" class="empty">'+
+    (accs.length?"没有匹配的账号":"还没有账号。点上方「登录新账号」添加后，再点「重载账号」。")+'</td></tr>';return}
+  $("#accBody").innerHTML=rows.map(function(r){
+    var a=r.a,st=r.st,sr=r.sr;
+    var pct=sr.r==null?0:Math.round(sr.r*100);
+    var bcls=sr.r==null?"":(sr.r>0.9?"":(sr.r>0.6?"w":"b"));
+    return '<tr>'+
+      '<td><div style="font-weight:600">'+esc(a.nickname||"未命名")+'</div><div class="uid">'+esc(String(a.uid||"").slice(0,8))+'</div></td>'+
+      '<td><span class="st '+st.cls+'" title="'+esc(st.detail)+'">'+esc(st.label)+'</span></td>'+
+      '<td class="num">'+num(a.credits)+'</td>'+
+      '<td class="num">'+(a.in_flight||0)+'</td>'+
+      '<td><div style="display:flex;align-items:center;gap:6px"><div class="bar"><i class="'+bcls+'" style="width:'+pct+'%"></i></div>'+
+        '<span class="dim" style="font-size:10.5px">'+(sr.r==null?"—":pct+"%")+'</span></div>'+
+        '<div class="dim" style="font-size:10px">'+sr.s+' 成功 / '+sr.e+' 错误</div></td>'+
+      '<td class="num">'+r.w.toFixed(2)+'</td>'+
+      '<td class="num">'+(a.breaker_fails||0)+'</td>'+
+      '<td class="num">'+(st.left!=null?dur(st.left):"—")+'</td>'+
+      '<td class="dim" style="font-size:11px">'+(zeroT(a.until)?"—":new Date(a.until).toLocaleString("zh-CN",{hour12:false}))+'</td>'+
+      '<td class="dim" style="font-size:11px;max-width:190px">'+esc(a.reason||"—")+'</td>'+
+      '<td class="dim" style="font-size:11px">'+ago(zeroT(a.last_success)?0:a.last_success)+'</td>'+
+      '<td class="dim" style="font-size:11px">'+ago(zeroT(a.last_err)?0:a.last_err)+'</td>'+
+      '</tr>';
+  }).join("");
+}
+
+/* 本机 WorkBuddy 客户端登录态。
+   数据源 1（可抓取）：客户端 auth 目录（CodeBuddyExtension/.../auth 下的明文登录态
+     文件 workbuddy-desktop.info 及客户端自动备份）——含 accessToken / refreshToken；
+   数据源 2（仅身份）：~/.workbuddy 下的明文快照与账号目录。
+   面板只读这两处，不写客户端登录状态。 */
+function renderLocalAccounts(){
+  var el=$("#localAccounts");if(!el)return;
+  var la=S.meta&&S.meta.local_accounts;
+  var dl=S.meta&&S.meta.desktop_logins;
+  var tag=$("#localTag");
+  if(!la&&!dl){el.innerHTML='<div class="dim" style="font-size:12px">—</div>';if(tag)tag.textContent="";return}
+
+  // 以 uid 合并两个来源；cred=该账号在客户端 auth 目录里有可用凭据
+  var merged={};
+  ((dl&&dl.accounts)||[]).forEach(function(a){
+    merged[a.uid]={uid:a.uid,short:String(a.uid).slice(0,8),nickname:a.nickname||"",
+      domain:a.domain||"",expires_at:a.expires_at,expired:!!a.expired,has_refresh:!!a.has_refresh,
+      src:a.file||"",is_current:!!a.is_current,in_pool:!!a.in_pool,pool_file:a.pool_file||"",cred:true};
+  });
+  ((la&&la.accounts)||[]).forEach(function(a){
+    if(merged[a.uid]){
+      if(!merged[a.uid].nickname&&a.nickname)merged[a.uid].nickname=a.nickname;
+      return;
+    }
+    merged[a.uid]={uid:a.uid,short:a.short||String(a.uid).slice(0,8),nickname:a.nickname||"",
+      domain:"",expires_at:null,expired:false,has_refresh:false,src:"",
+      is_current:!!a.is_current,in_pool:!!a.in_pool,pool_file:a.pool_file||"",cred:false};
+  });
+  var rows=Object.keys(merged).map(function(k){return merged[k]});
+  // 排序：待抓取（有凭据未入池）→ 当前登录 → 仅身份未入池 → 已入池
+  function rank(x){if(x.cred&&!x.in_pool)return 0;if(x.is_current)return 1;if(!x.in_pool)return 2;return 3}
+  rows.sort(function(x,y){var d=rank(x)-rank(y);return d!==0?d:String(x.uid).localeCompare(String(y.uid))});
+
+  var credN=rows.filter(function(a){return a.cred}).length;
+  var poolN=rows.filter(function(a){return a.in_pool}).length;
+  var todoN=rows.filter(function(a){return a.cred&&!a.in_pool}).length;
+  if(tag)tag.textContent="可抓取 "+credN+" 个 · 已入池 "+poolN+" 个";
+
+  var head='<div class="dim" style="font-size:11.5px;line-height:1.85;margin-bottom:9px">'+
+    '凭据来源：<span class="mono">'+esc((dl&&dl.dir)||"")+'</span> 下的客户端明文登录态文件'+
+    '（<span class="mono">workbuddy-desktop.info</span> + 客户端自动备份）。面板<b>只读</b>该目录。</div>';
+
+  var toolbar='<div style="display:flex;gap:8px;align-items:center;margin-bottom:9px;flex-wrap:wrap">'+
+    '<button class="btn primary sm" data-import="all"'+(todoN?'':' disabled')+'>抓取全部入池</button>'+
+    '<span class="dim" style="font-size:11px">抓取写入 auths/ 后，点（运维操作区）「重载账号」让网关加载</span></div>';
+
+  var body=rows.map(function(a){
+    var badges='';
+    if(a.is_current)badges+='<span class="st full" style="margin-right:5px">当前登录</span>';
+    badges+=a.in_pool?'<span class="st healthy">已在账号池</span>':'<span class="st soft">未入池</span>';
+    var cred;
+    if(!a.cred){
+      cred='<span class="dim" style="font-size:11px">仅身份 · 无凭据</span>';
+    }else if(a.expired){
+      cred='<span class="st hard">token 已过期</span>'+(a.has_refresh?' <span class="dim" style="font-size:10.5px">可刷新</span>':'');
+    }else if(a.expires_at){
+      var days=Math.max(0,Math.round((a.expires_at*1000-Date.now())/86400000));
+      cred='<span class="dim" style="font-size:11px">剩余 '+days+' 天 · '+
+        esc(new Date(a.expires_at*1000).toLocaleDateString("zh-CN"))+'</span>';
+    }else{
+      cred='<span class="dim" style="font-size:11px">已取得凭据</span>';
+    }
+    var act=a.cred
+      ?'<button class="btn '+((a.in_pool&&!a.expired)?'':'primary ')+'sm" data-import="'+esc(a.uid)+'">'+
+        (a.in_pool?(a.expired?'刷新凭据':'更新凭据'):'抓取入池')+'</button>'
+      :'<button class="btn sm" data-login-open>发起授权</button>';
+    return '<tr>'+
+      '<td><div style="font-weight:600">'+esc(a.nickname||"（无昵称）")+'</div>'+
+        '<div class="uid">'+esc(a.short)+'…</div></td>'+
+      '<td class="dim" style="font-size:11px">'+esc((a.domain||"—").replace(/^www\./,""))+'</td>'+
+      '<td>'+badges+'</td>'+
+      '<td>'+cred+'</td>'+
+      '<td style="text-align:right">'+act+'</td>'+
+      '</tr>';
+  }).join("");
+
+  el.innerHTML=head+toolbar+
+    '<div class="tblwrap"><table><thead><tr><th>账号</th><th>登录域</th><th>状态</th><th>凭据</th><th></th></tr></thead>'+
+    '<tbody>'+body+'</tbody></table></div>'+
+    '<div class="dim" style="font-size:11px;margin-top:8px">'+
+    '「抓取入池」= 把客户端登录态里的 accessToken / refreshToken 写入网关账号池 '+
+    '<span class="mono">auths/workbuddy-&lt;uid&gt;.json</span>；同账号重复抓取为覆盖更新，可当续期用。</div>';
+}
+
+/* 抓取本机客户端凭据入池：target=uid 或 "all" */
+function importLocalLogins(target,btn){
+  var uids=(target&&target!=="all")?[target]:null;
+  var oldHtml=btn?btn.innerHTML:"";
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>抓取中…'}
+  jpost("/api/import-local-login",{uids:uids}).then(function(d){
+    if(!d||!d.ok){
+      toast("抓取失败："+((d&&d.error)||"未知错误"),"bad");
+      setActStatus("bad","抓取失败",(d&&d.error)||"来源文件不可读");
+      return;
+    }
+    if(d.scan&&S.meta)S.meta.desktop_logins=d.scan;
+    renderLocalAccounts();
+    var n=(d.imported||[]).length,bad=(d.failed||[]).length;
+    toast("已抓取 "+n+" 个账号到 auths/"+(bad?("，失败 "+bad+" 个"):""),"ok");
+    setActStatus("ok","已抓取 "+n+" 个账号凭据","正在自动重载网关…"+(bad?("（失败 "+bad+" 个）"):""));
+    autoReloadGateway();          // 抓取后自动重载，无需再去运维区手点
+  }).catch(function(e){
+    toast("抓取失败："+String(e),"bad");
+    setActStatus("bad","抓取请求失败",String(e));
+  }).then(function(){
+    if(btn){btn.disabled=false;btn.innerHTML=oldHtml}
+  });
+}
+
+/* ---------------- 自动重载网关 ---------------- */
+// 账号池文件变化后重启网关进程（native 下由 launcher / keeper 自动拉起），
+// 让新账号立即生效——抓取入池、授权成功、补取凭证都复用它。
+function autoReloadGateway(){
+  setActStatus("run","正在重载网关…","重启 wb2api.exe 以加载最新账号池");
+  jpost("/api/run",{action:"restart"}).then(function(d){
+    if(!d||d.error){
+      setActStatus("bad","重载失败",(d&&d.error)||"未知错误");
+      return;
+    }
+    var jid=(d.job&&d.job.id)||"";
+    if(jid)followReload(jid);
+    else setActStatus("ok","重载指令已下发","");
+  }).catch(function(e){setActStatus("bad","重载请求失败",String(e))});
+}
+function followReload(jid,tries){
+  tries=tries||0;
+  if(tries>45){setActStatus("warn","重载超时","请到（运维操作区）查看执行输出");return}
+  jget("/api/job?id="+encodeURIComponent(jid)).then(function(d){
+    if(!d)return;
+    if(d.status==="running"){setTimeout(function(){followReload(jid,tries+1)},700);return}
+    if(d.status==="done"){
+      setActStatus("ok","网关已重载，新账号已生效","");
+      toast("网关已重载 ✓","ok");
+      refreshAll(true);
+    }else{
+      setActStatus("bad","重载失败","退出码 "+(d.exit_code==null?"?":d.exit_code));
+    }
+  }).catch(function(){setTimeout(function(){followReload(jid,tries+1)},1200)});
+}
+
+/* ---------------- OAuth 授权弹窗（发起 → 轮询 → 入池 → 自动重载）---------------- */
+// 关键语义：关闭弹窗立即停止轮询（不发新请求），浏览器侧授权不受影响。
+var LOGIN={timer:null,deadline:0,running:false,url:""};
+
+function loginModalOpen(){
+  var m=$("#loginMask");if(!m)return;
+  m.classList.add("on");
+  renderLocalIntoModal();
+  var inp=$("#loginUrl");if(inp)inp.value="";
+  LOGIN.url="";LOGIN.deadline=0;
+  loginSetWait("run","正在获取授权地址…");
+  jpost("/api/login/begin",{}).then(function(d){
+    if(!d||!d.ok){
+      loginSetWait("err","获取授权地址失败："+((d&&d.error)||"未知错误"));
+      return;
+    }
+    LOGIN.url=d.auth_url||"";
+    if(inp)inp.value=LOGIN.url;
+    var ttl=$("#loginTtl");if(ttl)ttl.textContent=String(d.expires_in||600);
+    var itv=$("#loginItv");if(itv)itv.textContent=String(d.interval||2);
+    LOGIN.deadline=Date.now()+((d.expires_in||600)*1000);
+    loginSetWait("run","等待授权完成…");
+    loginPollStart(d.interval||2);
+    // 不自动打开浏览器：等用户点「在浏览器中打开」
+  }).catch(function(e){loginSetWait("err","请求失败："+String(e))});
+  return false;
+}
+function loginSetWait(kind,text){
+  var w=$("#loginWait");if(!w)return;
+  w.className="waitbox"+(kind==="ok"?" done":(kind==="err"?" err":""));
+  w.innerHTML=(kind==="run"?'<span class="spin"></span>':"")+esc(text);
+}
+function loginPollStart(sec){
+  loginPollStop();
+  LOGIN.running=true;
+  LOGIN.timer=setInterval(loginPollTick,Math.max(1,sec)*1000);
+}
+function loginPollStop(){
+  if(LOGIN.timer){clearInterval(LOGIN.timer);LOGIN.timer=null}
+  LOGIN.running=false;
+}
+function loginPollTick(){
+  if(!LOGIN.running)return;
+  if(LOGIN.deadline&&Date.now()>LOGIN.deadline){
+    loginPollStop();loginSetWait("err","授权已超时，请关闭后重新发起");return;
+  }
+  jpost("/api/login/check",{}).then(function(d){
+    if(!LOGIN.running)return;          // 弹窗已关闭：丢弃本次结果
+    if(!d||!d.ok){
+      loginPollStop();
+      loginSetWait("err",(d&&d.error)||"轮询失败");
+      return;
+    }
+    if(d.pending)return;               // 继续等
+    loginPollStop();
+    var a=d.account||{};
+    loginSetWait("ok","授权完成："+(a.nickname||a.uid||"新账号")+" 已写入账号池（"+a.action+"）");
+    toast("账号已入池："+(a.nickname||a.uid),"ok");
+    autoReloadGateway();
+    refreshAll(true);
+    setTimeout(loginModalClose,1500);
+  }).catch(function(){/* 网络抖动：忽略，下一轮再试 */});
+}
+function loginModalClose(){
+  loginPollStop();
+  var m=$("#loginMask");if(m)m.classList.remove("on");
+}
+
+/* 弹窗内的三个标签页切换 */
+function loginTab(name){
+  var tabs=document.querySelectorAll("#loginMask .ltabs span");
+  for(var i=0;i<tabs.length;i++){
+    tabs[i].className=(tabs[i].getAttribute("data-ltab")===name)?"on":"";
+  }
+  var map={oauth:"ltab-oauth",token:"ltab-token",local:"ltab-local"};
+  for(var key in map){
+    var pane=document.getElementById(map[key]);
+    if(pane)pane.style.display=(key===name)?"":"none";
+  }
+  if(name==="local")renderLocalIntoModal();
+}
+
+/* 「本地导入」标签：列出本机客户端登录态，抓取入池 */
+function renderLocalIntoModal(){
+  var el=document.getElementById("loginLocalBody");
+  if(!el)return;
+  var dl=S.meta&&S.meta.desktop_logins;
+  if(!dl||!dl.available){
+    el.innerHTML='<div class="dim" style="font-size:12px">'+esc((dl&&dl.note)||"未发现本机客户端登录态")+'</div>'+
+      '<div class="dim" style="font-size:11px;margin-top:5px">数据目录：<span class="mono">'+esc((dl&&dl.dir)||"")+'</span></div>';
+    return;
+  }
+  var rows=(dl.accounts||[]).map(function(a){
+    var st=a.in_pool?'<span class="st healthy">已在账号池</span>':'<span class="st soft">未入池</span>';
+    var days=a.expires_at?Math.max(0,Math.round((a.expires_at*1000-Date.now())/86400000)):null;
+    var cred=a.expired?'<span class="st hard">已过期</span>'
+      :(days!=null?'<span class="dim" style="font-size:11px">剩余 '+days+' 天</span>':'');
+    var act=a.in_pool
+      ?'<button class="btn sm" data-import="'+esc(a.uid)+'">更新凭据</button>'
+      :'<button class="btn primary sm" data-import="'+esc(a.uid)+'">抓取入池</button>';
+    return '<tr><td><div style="font-weight:600">'+esc(a.nickname||a.uid.slice(0,8)+'…')+'</div>'+
+      '<div class="uid">'+esc(a.uid.slice(0,8))+'…</div></td>'+
+      '<td>'+st+'</td><td>'+cred+'</td><td style="text-align:right">'+act+'</td></tr>';
+  }).join("");
+  el.innerHTML='<div class="dim" style="font-size:11px;margin-bottom:7px">'+esc(dl.dir)+'</div>'+
+    '<div class="tblwrap"><table><thead><tr><th>账号</th><th>状态</th><th>凭据</th><th></th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table></div>'+
+    '<div class="dim" style="font-size:11px;margin-top:6px">抓取写入 auths/ 后自动重载网关。</div>';
+}
+
+/* 「Token / JSON」标签：粘贴 access token 直接添加（uid 从 JWT 解析） */
+function tokenAdd(btn){
+  var acc=document.getElementById("tokAccess"),
+      ref=document.getElementById("tokRefresh"),
+      w=document.getElementById("tokWait");
+  var v=acc?String(acc.value||"").trim():"";
+  if(!v){toast("请粘贴 access token","bad");return}
+  var oldHtml=btn?btn.innerHTML:"";
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>解析中…'}
+  if(w){w.style.display="flex";w.className="waitbox";w.innerHTML='<span class="spin"></span>解析 token 并写入账号池…'}
+  jpost("/api/login/token",{access_token:v,refresh_token:ref?String(ref.value||"").trim():""}).then(function(d){
+    if(d&&d.ok){
+      if(w){w.className="waitbox done";w.textContent="已添加："+(d.nickname||d.uid_short||d.uid)}
+      if(acc)acc.value="";
+      if(ref)ref.value="";
+      toast("账号已入池："+(d.nickname||d.uid),"ok");
+      autoReloadGateway();
+      refreshAll(true);
+    }else{
+      if(w){w.className="waitbox err";w.textContent=(d&&d.error)||"添加失败"}
+      toast("添加失败："+((d&&d.error)||"未知错误"),"bad");
+    }
+  }).catch(function(e){
+    if(w){w.className="waitbox err";w.textContent=String(e)}
+  }).then(function(){
+    if(btn){btn.disabled=false;btn.innerHTML=oldHtml}
+  });
+}
+
+function renderPickSim(accs,sts,cfg){
+  var maxC=Math.max.apply(null,[0].concat(accs.map(function(a){return a.credits||0})));
+  var pool=accs.map(function(a,i){return {a:a,st:sts[i],w:visibleWeight(a,maxC)}});
+  var elig=pool.filter(function(p){return isEligible(p.a,p.st,cfg)});
+  elig.sort(function(x,y){return y.w-x.w||String(x.a.uid).localeCompare(String(y.a.uid))});
+  var top5=elig.slice(0,5);
+  var maxInFlight=(cfg&&cfg.pool&&cfg.pool.max_in_flight)||0;
+  var idlePer=(cfg&&cfg.pool&&cfg.pool.idle_weight_per_hour)||0.5;
+  var idleMax=(cfg&&cfg.pool&&cfg.pool.idle_weight_max)||5;
+
+  var h='<div class="warnbox" style="margin-bottom:10px">Go 端权重公式：<span class="mono">'+
+    'w = 1 + 积分/最大积分×10 + min(闲置小时×'+idlePer+', '+idleMax+') + 成功率×3</span>'+
+    '<br>服务端 <b>/status 未透出 lastUsed</b>（闲置补偿项），因此下表为「可见权重」，'+
+    '实际排序还会被闲置补偿影响。</div>';
+
+  h+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">'+
+    '<span class="chip">参选资格 <b>'+elig.length+'</b> 个</span>'+
+    '<span class="chip">短名单长度 <b>5</b></span>'+
+    '<span class="chip">在途上限 <b>'+(maxInFlight||"不限")+'</b></span>'+
+    '<button class="btn sm" id="btnDraw">模拟抽签</button></div>';
+  h+='<div id="drawResult" class="code" style="margin-bottom:10px">点击「模拟抽签」，在 Top5 短名单内按权重做一次加权随机（与 Go 端 pickWeighted 同口径）。</div>';
+
+  function fmtVal(v){return v==null?1.5:v}
+  if(!top5.length){
+    h+='<div class="empty">当前没有任何账号可参与选号 → 请求会走「全冷却兜底」，'+
+       '若也无候选则返回 503 no_healthy_account。</div>';
+  } else {
+    h+='<div class="tblwrap" style="max-height:290px"><table><thead><tr>'+
+      '<th>#</th><th>账号</th><th>可用性</th><th class="num">积分</th>'+
+      '<th class="num">成功率项</th><th class="num">可见权重</th></tr></thead><tbody>'+
+      top5.map(function(p,i){
+        var sr=successRate(p.a);
+        return '<tr><td><span class="rank'+(i===0?" r1":"")+'">'+(i+1)+'</span></td>'+
+          '<td>'+esc(p.a.nickname||"未命名")+'<div class="uid">'+esc(String(p.a.uid).slice(0,8))+'</div></td>'+
+          '<td><span class="st '+p.st.cls+'">'+esc(p.st.label)+'</span></td>'+
+          '<td class="num">'+num(p.a.credits)+'</td>'+
+          '<td class="num">'+(sr.t>0?(sr.r*3).toFixed(2):"1.50")+'</td>'+
+          '<td class="num" style="font-weight:680">'+p.w.toFixed(2)+'</td></tr>';
+      }).join("")+'</tbody></table></div>';
+  }
+  var blocked=pool.filter(function(p){return !isEligible(p.a,p.st,cfg)});
+  if(blocked.length){
+    h+='<details style="margin-top:10px"><summary>被排除的 '+blocked.length+' 个账号及原因</summary><div class="dbody">'+
+      blocked.map(function(p){return '<div style="padding:3px 0;font-size:11.5px">'+
+        '<span class="st '+p.st.cls+'">'+esc(p.st.label)+'</span> '+
+        esc(p.a.nickname||String(p.a.uid).slice(0,8))+' — <span class="muted">'+esc(p.st.detail)+'</span></div>'}).join("")+
+      '</div></details>';
+  }
+  $("#pickSim").innerHTML=h;
+
+  var bd=$("#btnDraw");
+  if(bd)bd.onclick=function(){
+    var el=$("#drawResult");
+    if(!top5.length){el.textContent="无可抽取的候选账号。";return}
+    var ws=top5.map(function(p){return p.w}),tot=ws.reduce(function(a,b){return a+b},0);
+    var r=Math.random()*tot,acc=0,picked=top5[top5.length-1];
+    for(var i=0;i<top5.length;i++){acc+=ws[i];if(r<acc){picked=top5[i];break}}
+    var lines=top5.map(function(p){
+      return "  "+String(p.w.toFixed(2)).padStart(6)+"  ["+(p.w/tot*100).toFixed(1).padStart(5)+"%]  "+
+        (p===picked?"▶ ":"  ")+(p.a.nickname||"")+" "+String(p.a.uid).slice(0,8)}).join("\n");
+    el.textContent="加权随机（权重合计 "+tot.toFixed(2)+"）\n"+lines+
+      "\n\n本次抽中：" + (picked.a.nickname||"") + " (" + String(picked.a.uid).slice(0,8) + ")";
+    el.classList.remove("flash");void el.offsetWidth;el.classList.add("flash");
+  };
+}
+
+function renderChain(accs,sts,cfg){
+  var pool=accs.map(function(a,i){return {a:a,st:sts[i]}});
+  var direct=pool.filter(function(p){return isEligible(p.a,p.st,cfg)});
+  var modelEx=pool.filter(function(p){return p.st.k==="soft"&&p.st.model});
+  var fallback=pool.filter(function(p){
+    if(p.st.k==="disabled"||p.st.k==="hard")return false;
+    if(p.st.k!=="soft"&&p.st.k!=="breaker")return false;
+    var maxf=(cfg&&cfg.pool&&cfg.pool.max_in_flight)||0;
+    if(maxf>0&&(p.a.in_flight||0)>=maxf)return false;
+    return true;});
+  fallback.sort(function(x,y){return (x.st.left||0)-(y.st.left||0)});
+
+  var l1=direct.length>0,l2=!l1&&modelEx.length>0,l3=!l1&&!l2&&fallback.length>0,l4=!l1&&!l2&&!l3;
+  function node(name,text,val,cls){
+    return '<div class="node '+cls+'"><div class="nl">'+name+'</div><div class="nt">'+text+'</div>'+
+      (val!=null?'<div class="nn">'+val+'</div>':'')+'</div>'}
+  $("#chain").innerHTML=
+    node("① 直接选号","healthy 账号中按三因子加权取 Top5 再加权随机",direct.length+" 个候选",l1?"active":"")+
+    '<div class="arrow">›</div>'+
+    node("② 模型级豁免","6004 模型级限流时，换模型仍可用（不计入直选）",modelEx.length+" 个可豁免",l2?"active":"")+
+    '<div class="arrow">›</div>'+
+    node("③ 全冷却兜底","取最早到期者；排除已禁用与余额冷却号",fallback.length+" 个可兜底",l3?"active":"")+
+    '<div class="arrow">›</div>'+
+    node("④ 彻底耗尽","返回 503 no_healthy_account，客户端可见失败",l4?"503":"待命",l4?"dead":"");
+}
+function renderChainExtra(){
+  var evs=S.events.filter(function(e){return e.kind==="failover"});
+  var cfg=S.meta&&S.meta.config;
+  var h='<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">';
+  h+='<div style="flex:1;min-width:280px"><div style="font-size:12px;font-weight:600;margin-bottom:6px">'+
+     '真实的切换事件 <span class="dim">（来自容器日志 <span class="mono">pool: fallback_earliest_expiry</span>）</span></div>';
+  if(!evs.length){
+    h+='<div class="empty" style="text-align:left;padding:6px 0">暂无。当所有 healthy 账号都不可用、'+
+       '网关回落到冷却账号时，这里会出现记录。</div>';
+  } else {
+    h+='<div class="ul" style="max-height:200px;overflow:auto">'+evs.slice(-24).reverse().map(function(e){
+      return '<li><span class="t">'+esc((e.ts||"").slice(11,19)||hhmmss(e.recv*1000))+'</span>'+
+        '<span class="c"><span class="st breaker">兜底切换</span> <span class="mono" style="font-size:11px">'+
+        esc(e.text)+'</span></span></li>'}).join("")+'</div>';
+  }
+  h+='</div>';
+  h+='<div style="flex:1;min-width:280px"><div style="font-size:12px;font-weight:600;margin-bottom:6px">切换与恢复规则</div>'+
+    '<ul class="ul">'+
+    '<li><span class="c"><b>冷却</b>：429/限流 → 软冷却（基数 '+
+      esc((cfg&&cfg.cooldown&&cfg.cooldown.soft_rate)||"600s")+'，连续触发指数退避封顶 '+
+      esc((cfg&&cfg.cooldown&&cfg.cooldown.soft_rate_max)||"2h")+'）；402 余额不足 → 硬冷却到次日 04:00。</span></li>'+
+    '<li><span class="c"><b>熔断</b>：连续失败达 '+
+      esc((cfg&&cfg.pool&&cfg.pool.breaker_threshold)||3)+' 次 → 熔断 '+
+      esc((cfg&&cfg.pool&&cfg.pool.breaker_cooldown)||"30m")+'，逐次翻倍封顶 '+
+      esc((cfg&&cfg.pool&&cfg.pool.breaker_cooldown_max)||"6h")+'。</span></li>'+
+    '<li><span class="c"><b>禁用</b>：连续 3 次 12153（session 失效）才永久禁用，需重新登录。</span></li>'+
+    '<li><span class="c"><b>恢复</b>：冷却到期自动恢复；签到查到余额 > 0 解冻余额冷却；一次 chat 成功即清空连续失败与熔断。</span></li>'+
+    '<li><span class="c"><b>请求级轮换</b>：单次请求最多换 3 个账号（MaxRotate，网关内置常量），'+
+      '每个账号在同一次请求里只试一次。</span></li>'+
+    '</ul></div>';
+  h+='</div>';
+  $("#failoverExtra").innerHTML=h;
+}
+function renderEvents(){
+  var onlyImp=$("#evOnlyImp").checked;
+  var imp={failover:1,recover:1,disabled:1,error:1,exhausted:1,checkin:1};
+  var merged=S.events.concat(S.localEv);
+  merged.sort(function(a,b){return (b.recv||0)-(a.recv||0)});
+  if(onlyImp)merged=merged.filter(function(e){return imp[e.kind]});
+  merged=merged.slice(0,160);
+  var kmap={failover:["兜底切换","breaker"],recover:["恢复","healthy"],
+    call:["","soft"],shift:["状态变化","soft"],checkin:["签到","full"],
+    travel:["旅行","full"],activity:["活跃","full"],keepalive:["保活","full"],
+    disable:["禁用","disabled"],exhausted:["耗尽","disabled"],error:["异常","hard"],
+    boot:["启动",""],chat:["对话",""],log:["",""]};
+  $("#evTag").textContent=(S.meta&&S.meta.mode==="native"?"网关事件":"容器事件")+" "+S.events.length+" 条 · 状态变化 "+S.localEv.length+" 条";
+  var lt=$("#logTag");
+  if(lt)lt.textContent=(S.meta&&S.meta.mode==="native")?"gateway.log 增量跟随":"docker logs -f 跟随";
+  if(!merged.length){$("#evList").innerHTML='<div class="empty">暂无事件。运行操作或等待网关处理请求后出现。</div>';return}
+  $("#evList").innerHTML=merged.map(function(e){
+    var k=kmap[e.kind]||["",""];
+    var t=e.local?hhmmss(e.recv*1000):((e.ts||"").slice(11,19)||hhmmss(e.recv*1000));
+    var lb=k[0]?'<span class="st '+(k[1]||"soft")+'">'+k[0]+'</span> ':'';
+    var color=e.level==="error"?"var(--bad)":(e.level==="warn"?"var(--warn)":
+      (e.level==="info"?"var(--tx)":"var(--tx3)"));
+    return '<li><span class="t">'+esc(t)+'</span><span class="c">'+lb+
+      '<span style="color:'+color+'">'+esc(e.text)+'</span>'+
+      (e.local?' <span class="dim" style="font-size:10px">·本地推断</span>':'')+'</span></li>';
+  }).join("");
+}
+function renderLogs(){
+  var el=$("#logView");
+  var lines=S.log.slice(-400);
+  if(!lines.length){el.innerHTML='<span class="l dim">等待日志…</span>';return}
+  el.innerHTML=lines.map(function(l){
+    var cls="";
+    if(l.level==="error")cls="err";else if(l.level==="warn")cls="skip";
+    else if(l.kind==="boot")cls="cmd";
+    return '<span class="l '+cls+'">'+esc(l.text)+'</span>'}).join("");
+  if($("#logAuto").checked)el.scrollTop=el.scrollHeight;
+}
+var _lastSched=null;
+function renderSched(){
+  var m=S.meta;if(!m)return;
+  $("#sched").innerHTML=(m.schedule||[]).map(function(s){
+    var live="";
+    if(s.enabled&&s.next){
+      var t=Date.parse(s.next),left=(t-Date.now())/1000;
+      live=left>0?("下次 "+hhmmss(t)+" · "+dur(left)+"后"):"即将执行";
+    }
+    return '<div class="kpi '+(s.enabled?"info":"")+'" data-sched="'+(s.next||"")+'">'+
+      '<div class="k">'+(s.enabled?'<span class="dot ok"></span>':'<span class="dot"></span>')+esc(s.name)+'</div>'+
+      '<div class="v" style="font-size:15px">'+(s.enabled?(s.hours||[]).map(function(h){return h+":00"}).join(" / "):"已关闭")+'</div>'+
+      '<div class="s sched-live">'+esc(live||"—")+'</div></div>';
+  }).join("");
+  if(!S.countdown)S.countdown=setInterval(function(){
+    $$("[data-sched]").forEach(function(el){
+      var t=Date.parse(el.getAttribute("data-sched"));
+      if(!t){return}
+      var left=(t-Date.now())/1000;
+      var s=el.querySelector(".sched-live");
+      if(s)s.textContent=left>0?("下次 "+hhmmss(t)+" · "+dur(left)+"后"):"即将执行";
+    });
+  },1000);
+}
+function renderCfg(){
+  var m=S.meta,c=m.config||{};
+  function card(title,pairs,cls){
+    return '<div class="kpi '+(cls||"")+'" style="grid-column:span 1"><div class="k" style="margin-bottom:7px">'+title+'</div>'+
+      '<dl class="kv">'+pairs.map(function(p){
+        return '<dt>'+p[0]+'</dt><dd>'+esc(p[1])+'</dd>'}).join("")+'</dl></div>';
+  }
+  var co=c.cooldown||{},pl=c.pool||{},ss=c.session_sticky||{},up=c.upstream||{},
+      ft=c.features||{},pr=c.prompt||{},us=c.upstash||{},sv=c.server||{};
+  $("#cfg").innerHTML=
+    card("服务",[["监听",c.listen],["API Key",m.api_key_masked||"(未设置)"],
+      ["鉴权",m.api_key?"开启（Bearer）":"关闭"],["请求体上限",(sv.max_body_mb||8)+" MB"]])+
+    card("冷却 / 熔断",[["软冷却基数",co.soft_rate],["软冷却封顶",co.soft_rate_max],
+      ["熔断阈值",(pl.breaker_threshold||3)+" 次连续失败"],["熔断时长",pl.breaker_cooldown],
+      ["熔断封顶",pl.breaker_cooldown_max]])+
+    card("选号 / 在途",[["单号在途上限",pl.max_in_flight||0],["闲置补偿/小时",pl.idle_weight_per_hour],
+      ["闲置补偿封顶",pl.idle_weight_max],["会话粘性",ss.enabled?"开启":"关闭"],
+      ["粘性 TTL",ss.ttl],["粘性 GC",ss.gc_interval]])+
+    card("上游",[["短请求超时",(up.timeout_seconds||120)+"s"],["首字节超时",(up.header_timeout_seconds||120)+"s"],
+      ["流空闲超时",(up.idle_timeout_seconds||300)+"s"],["User-Agent",up.user_agent||"(默认 CLI/2.63.2)"]])+
+    card("提示词 / 指纹",[["提示词模式",pr.mode],["提示词文件",pr.file||"(内置默认)"],
+      ["黑名单指纹脱敏",ft.sanitize_blacklist_fingerprints?"开启":"关闭"]])+
+    card("持久化",[["Upstash URL",us.url||"(未配置)"],["存储模式",S.status?S.status.redis_mode:"—"],
+      ["state 文件",m.state_file],["state 存在",m.state_file_exists?"是":"否"]]);
+}
+function renderModels(){
+  var d=S.models;
+  if(!d||d.error){$("#models").innerHTML='<div class="empty">无法读取模型列表</div>';return}
+  var list=d.data||[];
+  $("#models").innerHTML='<div class="chip">共 <b>'+list.length+'</b> 个模型</div>'+
+    '<div style="margin-top:8px">'+list.map(function(m){
+      return '<span class="chip">'+esc(m.id)+' <span class="dim">'+
+        (m.context_length?Math.round(m.context_length/1024)+"K":"")+'</span></span>'}).join("")+'</div>';
+  fillModelOptions();
+}
+function renderApiHelp(){
+  var m=S.meta;if(!m)return;
+  var base="http://localhost:"+m.api_port;
+  var ids=((S.models&&S.models.data)||[]).map(function(x){return x.id});
+  var defModel=ids.indexOf("deepseek-v4.1-flash")>=0?"deepseek-v4.1-flash":(ids[0]||"deepseek-v4.1-flash");
+  function blk(title,code,note,test,extra){
+    return '<div style="font-size:12px;font-weight:600;margin:12px 0 5px">'+title+'</div>'+
+      (extra||'')+
+      '<div class="code">'+esc(code)+'</div>'+
+      '<div style="margin-top:5px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">'+
+      '<button class="btn primary sm" data-test="'+test+'">测试此接口</button>'+
+      '<button class="btn sm" data-copy="'+esc(code)+'">复制命令</button>'+
+      (note?'<span class="dim" style="font-size:11px">'+note+'</span>':'')+'</div>';
+  }
+  $("#apiHelp").innerHTML=
+    '<div class="warnbox">网关是 <b>OpenAI 兼容</b>接口。为避免浏览器跨域（网关无 CORS），页面所有请求都走'+
+    '<b>面板同源代理</b>再转发到 <span class="mono">'+esc(base)+'</span>；鉴权头由服务端注入 '+
+    '<span class="mono">Authorization: Bearer &lt;api_key&gt;</span>。</div>'+
+    blk('① 探活 <span class="mono">GET /healthz</span>（无鉴权）',
+      'curl.exe -s '+base+'/healthz',
+      '200 = 有可服务账号；503 = 进程正常但没有可用账号（两者都说明接口通）','healthz')+
+    blk('② 账号池状态 <span class="mono">GET /status</span>（顶栏「刷新」等价于此）',
+      'curl.exe -s '+base+'/status -H "Authorization: Bearer '+m.api_key+'"',
+      '返回汇总 + 每账号详情','status')+
+    blk('③ 模型列表 <span class="mono">GET /v1/models</span>',
+      'curl.exe -s '+base+'/v1/models -H "Authorization: Bearer '+m.api_key+'"',
+      '模型 id 以这里为准','models')+
+    blk('④ 对话补全 <span class="mono">POST /v1/chat/completions</span>（会消耗一次额度）',
+      'curl.exe -s '+base+'/v1/chat/completions -H "Authorization: Bearer '+m.api_key+
+      '" -H "Content-Type: application/json" --data-raw "{\\"model\\":\\"'+defModel+'\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"你好\\"}],\\"stream\\":false}"',
+      '命令均为单行，可直接粘贴到 cmd / PowerShell / Git Bash','chat',
+      '<div class="arow" style="margin-bottom:6px"><span class="dim" style="font-size:11px">测试用模型</span>'+
+      '<input type="text" id="chatModel" list="modelOpts" value="'+esc(defModel)+'" style="width:180px">'+
+      '<datalist id="modelOpts"></datalist>'+
+      '<span class="dim" id="chatModelHint" style="font-size:11px"></span></div>')+
+    '<div class="dim" style="font-size:11px;margin-top:12px">'+
+    '注意：网关<b>没有任何写接口</b>——账号的增删只能通过登录脚本与 auths/ 目录，'+
+    '冷却/禁用的恢复只能等待自动到期或重新登录。因此本面板的「管理」边界是：'+
+    '<b>看 + 触发既有运维脚本 + 接口自检</b>。</div>';
+  if(!$("#apiTestOut").innerHTML){
+    $("#apiTestOut").innerHTML='<div class="empty">点上方任一「测试此接口」，这里会显示真实 HTTP 状态码、耗时与响应体。</div>';
+  }
+  fillModelOptions();
+}
+/* ---------------- 一键导入 cc-switch（ccswitch:// 深链） ---------------- */
+// cc-switch 官方深链协议：ccswitch://v1/import?resource=provider&app=..&name=..&endpoint=..&apiKey=..&model=..
+// 点击后由系统按 HKEY_CLASSES_ROOT\ccswitch 唤起 cc-switch，弹确认框后写入供应商。
+// 关键前提：cc-switch 自带本地代理（默认 127.0.0.1:15721）能 Anthropic <-> OpenAI 互转，
+// 所以 Claude Code 可以直连本网关（OpenAI 格式），不需要 claude-code-router。
+function ccSwitchLink(app){
+  var m=S.meta;if(!m)return "";
+  var ids=((S.models&&S.models.data)||[]).map(function(x){return x.id});
+  function prefer(l){for(var i=0;i<l.length;i++){if(!ids.length||ids.indexOf(l[i])>=0)return l[i]}return l[0]}
+  var main=prefer(["deepseek-v4.1-flash","deepseek-v4-pro","glm-5.3"]);
+  var fast=prefer(["glm-5.3-flash","kimi-k3-1","glm-5.1"]);
+  var pro=prefer(["deepseek-v4-pro","deepseek-v4.1-flash","glm-5.3"]);
+  var p=[["resource","provider"],["app",app],
+         ["name","WorkBuddy2API 本地网关"],
+         ["endpoint","http://127.0.0.1:"+m.api_port+"/v1"],
+         ["apiKey",m.api_key||"local"],
+         ["model",main],
+         ["apiFormat","openai_chat"]];
+  if(app==="claude"){
+    // [1m] 是 Claude Code 官方的 1M 上下文开关：Claude Code 发请求前会把后缀剥掉，
+    // 网关/上游拿到的仍是干净模型名（实测上游不认带后缀的名字，报 11102）。
+    p.push(["haikuModel",fast]);
+    p.push(["sonnetModel",main+"[1m]"]);
+    p.push(["opusModel",pro+"[1m]"]);
+    p.push(["notes","本地网关（OpenAI 兼容）。sonnet/opus 已带 [1m] 后缀启用 1M 上下文；需开启本地路由。"]);
+  }else{
+    p.push(["notes","本地网关（OpenAI 兼容 / chat completions）。"]);
+  }
+  return "ccswitch://v1/import?"+p.map(function(kv){
+    return kv[0]+"="+encodeURIComponent(kv[1])}).join("&");
+}
+function openDeepLink(url){
+  var a=document.createElement("a");
+  a.href=url;a.style.display="none";
+  document.body.appendChild(a);
+  if(a.click)a.click();
+  a.remove();
+}
+function renderCcSwitch(){
+  var m=S.meta;if(!m)return;
+  var el=$("#ccswitch");if(!el)return;
+  function block(label,desc,url,app){
+    return '<div style="margin-bottom:14px">'+
+      '<div style="font-size:12px;font-weight:600;margin-bottom:4px">'+label+'</div>'+
+      '<div class="dim" style="font-size:11px;margin-bottom:6px">'+desc+'</div>'+
+      '<div class="code" style="max-height:82px">'+esc(url)+'</div>'+
+      '<div style="margin-top:6px;display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
+      '<button class="btn primary sm" data-act="ccswitch" data-app="'+app+'">导入到 cc-switch</button>'+
+      '<button class="btn sm" data-copy="'+esc(url)+'">复制深链</button>'+
+      '</div></div>';
+  }
+  el.innerHTML=
+    '<div class="warnbox">cc-switch 官方的 <span class="mono">ccswitch://</span> 深链协议：点按钮会唤起 cc-switch 并弹出<b>导入确认框</b>，'+
+    '确认后写入供应商，不用手填 base_url / key / 模型。'+
+    '<br>本机协议已注册：<span class="mono">HKEY_CLASSES_ROOT\\ccswitch</span> → <span class="mono">D:\\soft\\cc_switch\\cc-switch.exe "%1"</span>。</div>'+
+    '<div class="hr"></div>'+
+    block('① 导入到 Claude Code <span class="dim">(app=claude)</span>',
+      'endpoint 填的是<b>本网关地址</b>；cc-switch 的本地代理会把 Anthropic 请求转成 OpenAI Chat 再发过来，<b>不需要 claude-code-router</b>。',
+      ccSwitchLink("claude"),"claude")+
+    block('② 导入到 Codex <span class="dim">(app=codex)</span>',
+      'Codex 原生说 OpenAI 格式，可直接指向本网关。',
+      ccSwitchLink("codex"),"codex")+
+    '<div class="hr"></div>'+
+    '<div style="font-size:12px;font-weight:600;margin-bottom:5px">导入后还需两步（cc-switch 内的开关，深链协议带不过去）</div>'+
+    '<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.85">'+
+    '<li>Claude Code：在供应商「高级选项 → <b>API 格式</b>」确认是 <span class="mono">OpenAI Chat Completions</span>'+
+    '（深链已附带 <span class="mono">apiFormat=openai_chat</span>，若被忽略就手选一次）。</li>'+
+    '<li>Claude Code：「<b>设置 → 路由</b>」打开本地路由总开关（代理默认监听 <span class="mono">127.0.0.1:15721</span>），'+
+    '并把 <span class="mono">Claude</span> 的接管打开 —— 否则请求不经过转换代理。</li>'+
+    '</ol>'+
+    '<div class="hr"></div>'+
+    '<div style="font-size:12px;font-weight:600;margin-bottom:5px">关于 1M 上下文</div>'+
+    '<div style="font-size:12px;line-height:1.85">WorkBuddy 客户端里的 300k / 1M 开关是它自己的 UI 设置，'+
+    '<b>不在 API 请求链路上</b>——网关只透传请求体，不改任何上下文字段（<span class="mono">payload.go</span>）。'+
+    '走代理时窗口由 Claude Code 侧决定：模型 ID 带 <span class="mono">[1m]</span> 后缀即启用 1M 窗口，'+
+    '且 Claude Code 会在<b>发请求前把后缀剥掉</b>，上游拿到的仍是干净模型名 '+
+    '（实测带后缀直发会被上游拒：<span class="mono">11102 model service info not found</span>）。'+
+    '本页生成的深链已自动给 sonnet / opus 加上 <span class="mono">[1m]</span>，haiku（后台任务）不需要。</div>'+
+    '<div class="dim" style="font-size:11px;margin-top:8px">'+
+    'Codex 侧若报 404 / 协议错误：Codex 默认发 Responses 协议，而本网关只有 Chat Completions —— '+
+    '需 cc-switch v3.16.0+ 用本地路由做协议改写（把 Codex 的 base_url 改写为本地路由）。'+
+    '<br>不想用深链的话，「客户端接入教程」里有全部手写配置。</div>';
+}
+
+/* ---------------- 客户端接入教程 ---------------- */
+function renderTutorial(){
+  var m=S.meta;if(!m)return;
+  var host="http://127.0.0.1:"+m.api_port;
+  var base=host+"/v1";
+  var key=m.api_key||"test_key";
+  var ids=((S.models&&S.models.data)||[]).map(function(x){return x.id});
+  function prefer(l){for(var i=0;i<l.length;i++){if(!ids.length||ids.indexOf(l[i])>=0)return l[i]}return l[0]}
+  var mMain=prefer(["deepseek-v4.1-flash","deepseek-v4-pro","glm-5.3"]);
+  var mFast=prefer(["glm-5.3-flash","kimi-k3-1","glm-5.1"]);
+  var mThink=prefer(["deepseek-v4-pro","deepseek-v4.1-flash","glm-5.3"]);
+  var mLong=prefer(["hy4-preview","kimi-k3-1","deepseek-v4.1-flash"]);
+  var mList=[];
+  [mMain,"glm-5.3","kimi-k3-1","minimax-m3",mFast].forEach(function(x){
+    if(mList.indexOf(x)<0&&(!ids.length||ids.indexOf(x)>=0))mList.push(x)});
+  if(mList.length<3){ids.forEach(function(x){if(mList.length<4&&mList.indexOf(x)<0)mList.push(x)})}
+  if(!mList.length)mList=[mMain];
+  var mListJson=mList.map(function(x){return '"'+x+'"'}).join(",\n        ");
+
+  function cb(s,note){
+    return '<div class="code">'+esc(s)+'</div>'+
+      '<div style="margin-top:5px;display:flex;gap:7px;align-items:center;flex-wrap:wrap">'+
+      '<button class="btn sm" data-copy="'+esc(s)+'">复制</button>'+
+      (note?'<span class="dim" style="font-size:11px">'+note+'</span>':'')+'</div>';
+  }
+  function sub(t,x){return '<div style="font-size:12px;font-weight:600;margin:10px 0 5px">'+t+
+    (x?' <span class="dim" style="font-weight:400">'+esc(x)+'</span>':'')+'</div>'}
+  function det(title,body,open){
+    return '<details'+(open?' open':'')+' style="margin-bottom:9px"><summary>'+title+
+      '</summary><div class="dbody">'+body+'</div></details>';
+  }
+  function why(t){return '<div class="warnbox" style="margin:4px 0 9px">'+t+'</div>'}
+  function tip(t){return '<div class="dim" style="font-size:11px;line-height:1.65;margin-top:6px">'+t+'</div>'}
+
+  var h="";
+  h+=why('本网关只提供 <b>OpenAI 兼容</b>端点（<span class="mono">/v1/chat/completions</span>），'+
+    '<b>没有</b> Anthropic 的 <span class="mono">/v1/messages</span>。因此 '+
+    '<b>Claude Code 必须经 claude-code-router 转换</b>；'+
+    'Codex / Cline / Continue / Aider / Cursor 等支持 OpenAI 格式的客户端<b>可直连</b>。');
+  h+='<div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:9px">'+
+     '<span class="chip">基础地址 <b>'+esc(base)+'</b></span>'+
+     '<span class="chip">鉴权 <b>Bearer '+esc(key)+'</b></span>'+
+     '<span class="chip">模型 <b>'+ids.length+'</b> 个</span></div>';
+  h+=tip('本页配置里的地址 / key / 模型名都按<b>当前实际值</b>动态生成。四个接口的连通性可在 <b>「接口测试」</b> 页签一键实测。');
+
+  h+=det('⚠️ 三条铁律（先读，能省半小时）',
+    '<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.8">'+
+    '<li><b>Claude Code 不能直连</b>——它说 Anthropic 格式，本网关只有 OpenAI 格式，必须用 CCR 翻译。</li>'+
+    '<li><b>base URL 写法分两种</b>：OpenAI 兼容客户端填 <span class="mono">'+esc(base)+'</span>；'+
+      'CCR 的 <span class="mono">api_base_url</span> 要写全 <span class="mono">'+esc(base)+'/chat/completions</span>；'+
+      'Claude Code 的 <span class="mono">ANTHROPIC_BASE_URL</span> 填的是 <b>CCR 地址</b>（<span class="mono">http://127.0.0.1:3456</span>），不是网关地址。</li>'+
+    '<li><b>模型名用实时列表</b>——源码静态表里的 <span class="mono">deepseek-v4-flash</span> 是过时值，'+
+      '当前实际是 <span class="mono">'+esc(mMain)+'</span>。</li>'+
+    '</ol>', true);
+
+  h+=det('✅ 开用前 30 秒自检（三条 curl）',
+    sub('① 网关活着吗？')+
+    cb('curl.exe -s '+host+'/healthz','期望 {"healthy":1,"total":1,"service":"workbuddy2api"}')+
+    sub('② 有哪些模型？')+
+    cb('curl.exe -s '+base+'/models -H "Authorization: Bearer '+key+'"','用这里的真实 id，别抄旧值')+
+    sub('③ 端到端能通吗？（一次真实对话）')+
+    cb('curl.exe -s '+base+'/chat/completions -H "Authorization: Bearer '+key+'" -H "Content-Type: application/json" -d "{\\"model\\":\\"'+mMain+'\\",\\"messages\\":[{\\"role\\":\\"user\\",\\"content\\":\\"只回复 OK\\"}],\\"stream\\":false}"',
+      '返回带 choices 的 JSON = 端点 / 密钥 / 模型三项全对')+
+    tip('这三条不用手敲——切到 <b>「接口测试」</b> 页签，四个接口各有一个「测试此接口」按钮，点一下就会真实请求并显示状态码与耗时。'),
+    true);
+
+  h+=det('🤖 Claude Code（经 claude-code-router 中转）',
+    sub('安装')+
+    cb('npm install -g @anthropic-ai/claude-code\nnpm install -g @musistudio/claude-code-router')+
+    sub('第一步：CCR 配置','%USERPROFILE%\\.claude-code-router\\config.json')+
+    cb('{\n  "LOG": false,\n  "APIKEY": "",\n  "Providers": [\n    {\n      "name": "wb2api",\n      "api_base_url": "'+base+'/chat/completions",\n      "api_key": "'+key+'",\n      "models": [\n        '+mListJson+'\n      ],\n      "transformer": {\n        "use": ["openai"]\n      }\n    }\n  ],\n  "Router": {\n    "default": "wb2api,'+mMain+'",\n    "background": "wb2api,'+mFast+'",\n    "think": "wb2api,'+mThink+'",\n    "longContext": "wb2api,'+mLong+'"\n  }\n}',
+      'api_base_url 必须写全 /chat/completions；transformer 必须是 openai')+
+    sub('第二步：让 Claude Code 指向 CCR','%USERPROFILE%\\.claude\\settings.json')+
+    cb('{\n  "env": {\n    "ANTHROPIC_BASE_URL": "http://127.0.0.1:3456",\n    "ANTHROPIC_AUTH_TOKEN": "wb2api-local",\n    "ANTHROPIC_MODEL": "'+mMain+'",\n    "ANTHROPIC_SMALL_FAST_MODEL": "'+mFast+'"\n  }\n}',
+      'BASE_URL 填 CCR 的地址；AUTH_TOKEN 是占位值，不是网关 key')+
+    sub('第三步：启动')+
+    cb('ccr code','注意是 ccr code，不是 claude')+
+    tip('真实 key 只写在第一步的 CCR 配置里。<b>别把凭据写进项目内的 .claude/settings.json</b>（会被提交到 git），用用户级的 ~/.claude/settings.json。'),
+    true);
+
+  h+=det('⌨️ Codex CLI（直连，最省事）',
+    sub('配置','%USERPROFILE%\\.codex\\config.toml')+
+    cb('model = "'+mMain+'"\nmodel_provider = "wb2api"\n\n[model_providers.wb2api]\nname = "WorkBuddy2API"\nbase_url = "'+base+'"\nenv_key = "WB2A_CODEX_KEY"\nwire_api = "chat"',
+      'wire_api 必须是 "chat"，不能是 "responses"')+
+    sub('设置密钥并启动')+
+    cb('$env:WB2A_CODEX_KEY = "'+key+'"\ncodex')+
+    tip('本网关只有 /v1/chat/completions，没有 /v1/responses，所以 wire_api 必须为 chat；base_url 写到 /v1 为止，不要带路径。'),
+    true);
+
+  h+=det('🧩 Cline / Roo Code / Kilo Code（VS Code 插件）',
+    '<div class="tblwrap"><table><thead><tr><th>字段</th><th>值</th></tr></thead><tbody>'+
+    '<tr><td>API Provider</td><td class="mono">OpenAI Compatible</td></tr>'+
+    '<tr><td>Base URL</td><td class="mono">'+esc(base)+'</td></tr>'+
+    '<tr><td>API Key</td><td class="mono">'+esc(key)+'</td></tr>'+
+    '<tr><td>Model ID</td><td class="mono">'+esc(mMain)+'</td></tr>'+
+    '</tbody></table></div>');
+
+  h+=det('🔁 Continue.dev（VS Code / JetBrains）',
+    sub('新版用 YAML','%USERPROFILE%\\.continue\\config.yaml')+
+    cb('name: wb2api\nversion: 0.0.1\nschema: v1\nmodels:\n  - name: WB '+mMain+'\n    provider: openai\n    model: '+mMain+'\n    apiBase: '+base+'\n    apiKey: '+key+'\n    useResponsesApi: false\n  - name: WB '+mFast+'\n    provider: openai\n    model: '+mFast+'\n    apiBase: '+base+'\n    apiKey: '+key+'\n    useResponsesApi: false',
+      'useResponsesApi: false 是关键')+
+    sub('老版用 JSON','%USERPROFILE%\\.continue\\config.json')+
+    cb('{\n  "models": [\n    {\n      "title": "WB '+mMain+'",\n      "provider": "openai",\n      "model": "'+mMain+'",\n      "apiBase": "'+base+'",\n      "apiKey": "'+key+'"\n    }\n  ]\n}'));
+
+  h+=det('🥢 Aider（命令行结对编程）',
+    cb('$env:OPENAI_API_BASE = "'+base+'"\n$env:OPENAI_API_KEY  = "'+key+'"\naider --model openai/'+mMain,
+      '模型名前缀 openai/ 必须加，否则不走自定义 base URL')+
+    sub('永久生效（写入用户环境变量）')+
+    cb('[System.Environment]::SetEnvironmentVariable("OPENAI_API_BASE", "'+base+'", "User")\n[System.Environment]::SetEnvironmentVariable("OPENAI_API_KEY", "'+key+'", "User")'));
+
+  h+=det('🖱️ Cursor',
+    '<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.8">'+
+    '<li>Settings → Models → 展开 <b>OpenAI API Key</b></li>'+
+    '<li>填 key <span class="mono">'+esc(key)+'</span>，打开 <b>Override OpenAI Base URL</b> 开关</li>'+
+    '<li>Base URL 填 <span class="mono">'+esc(base)+'</span></li>'+
+    '<li>在 Add model 里手工加上 <span class="mono">'+esc(mMain)+'</span>，关掉不需要的内置模型</li>'+
+    '</ol>'+
+    tip('Cursor 偏补全 / 单轮对话；长 agent 任务交给 Claude Code 或 Cline 体验更好。'));
+
+  h+=det('🖥️ Cherry Studio / ChatBox / Open WebUI（GUI）',
+    '<ol style="margin:0;padding-left:18px;font-size:12px;line-height:1.8">'+
+    '<li>供应商类型选 <b>OpenAI</b></li>'+
+    '<li>API Host / Base URL 覆盖为 <span class="mono">'+esc(base)+'</span>（个别只填 host 的填 <span class="mono">'+esc(host)+'</span>）</li>'+
+    '<li>填 key <span class="mono">'+esc(key)+'</span></li>'+
+    '<li>点「获取模型列表」，或手工添加模型 id</li>'+
+    '</ol>'+
+    tip('部分 GUI 会把推理模型的 reasoning_content 渲染进正文，那是客户端渲染习惯，不是返回坏了。'));
+
+  h+=det('💻 代码里直接调（SDK / LangChain / Dify）',
+    sub('OpenAI 官方 SDK（Python）')+
+    cb('from openai import OpenAI\n\nclient = OpenAI(base_url="'+base+'", api_key="'+key+'")\nresp = client.chat.completions.create(\n    model="'+mMain+'",\n    messages=[{"role": "user", "content": "只回复 OK"}],\n)\nprint(resp.choices[0].message.content)')+
+    sub('LangChain')+
+    cb('from langchain_openai import ChatOpenAI\n\nllm = ChatOpenAI(\n    model="'+mMain+'",\n    base_url="'+base+'",\n    api_key="'+key+'",\n)')+
+    sub('Dify')+
+    cb('设置 → 模型供应商 → OpenAI-API-compatible → 填 Base URL 与 key → 添加模型名 '+mMain));
+
+  h+=det('🧰 其他 CLI（同一套路）',
+    '<div class="tblwrap"><table><thead><tr><th>工具</th><th>配置方式</th></tr></thead><tbody>'+
+    '<tr><td><b>Zed</b></td><td>Settings → LLM Providers → 添加 OpenAI-compatible，API URL 填 <span class="mono">'+esc(base)+'</span></td></tr>'+
+    '<tr><td><b>Qwen Code</b></td><td><span class="mono">OPENAI_BASE_URL='+esc(base)+'</span> · <span class="mono">OPENAI_API_KEY='+esc(key)+'</span> · <span class="mono">OPENAI_MODEL='+esc(mMain)+'</span></td></tr>'+
+    '<tr><td><b>Goose</b></td><td><span class="mono">GOOSE_PROVIDER=openai</span> · <span class="mono">OPENAI_HOST='+esc(host)+'</span>（不带 /v1）· <span class="mono">OPENAI_BASE_PATH=v1/chat/completions</span></td></tr>'+
+    '<tr><td><b>OpenHands</b></td><td>Custom Model 填 <span class="mono">openai/'+esc(mMain)+'</span>，Base URL 填 <span class="mono">'+esc(base)+'</span></td></tr>'+
+    '</tbody></table></div>');
+
+  h+=det('🧠 用 Claude Code / Codex 必看：prompt.mode 会顶掉它们的系统提示词',
+    why('默认 <b>custom</b> 模式会<b>删除客户端全部 system / developer 消息</b>，只留一条网关自己的 ~2KB 通用提示词'+
+      '（<span class="mono">internal/prompt/prompt.go:68-87</span>）。'+
+      '而 Claude Code / Codex 的系统提示词正是它们 <b>agent 行为的核心</b>——被顶掉后会明显退化：不调工具、跳步骤、不守项目约定。')+
+    sub('正确做法：改成 passthrough')+
+    cb('{\n  "prompt": {\n    "mode": "passthrough",\n    "file": ""\n  }\n}',
+      '改 D:\\utils\\workbuddy2api\\config.json')+
+    cb('cd D:\\utils\\workbuddy2api\ndocker compose restart wb2api','改完必须重启容器才生效')+
+    tip('不用怕指纹误报：<span class="mono">sanitize.go:15-21</span> 的特征表里全是 Claude Code / Codex 的模板句'+
+      '（You are Claude Code / You are a coding agent running in the Codex CLI / Main branch...），'+
+      '<span class="mono">features.sanitize_blacklist_fingerprints</span> 默认 true，会把这些模板句做最小改写绕过逐字匹配，'+
+      '而<b>不动</b>你的业务指令。passthrough 还带自动降级重试（首遇拦截时同请求内换中性提示词再试一次）。')+
+    '<div class="hr"></div>'+
+    '<div style="font-size:12px;line-height:1.7"><b>什么时候保持 custom</b>：纯 OpenAI 兼容的<b>非 agent</b> 用途'+
+    '（GUI 闲聊、脚本批量调用、自研 LLM 应用）——没有自有 system 需要保全，用 custom 更省事。</div>',
+    false);
+
+  h+=det('🩺 排错对照表',
+    '<div class="tblwrap"><table><thead><tr><th>症状</th><th>多半原因</th><th>怎么办</th></tr></thead><tbody>'+
+    '<tr><td>404 / 找不到路径</td><td>Claude Code 直连了网关</td><td>走 CCR 中转</td></tr>'+
+    '<tr><td>404，路径里出现两次 /chat/completions</td><td>base URL 多带了路径</td><td>改成 <span class="mono">'+esc(base)+'</span></td></tr>'+
+    '<tr><td>401 invalid_api_key</td><td>key 与 config.json 不一致</td><td>对齐；config 里留空则不鉴权</td></tr>'+
+    '<tr><td>model not found</td><td>用了旧的 deepseek-v4-flash</td><td>换成 <span class="mono">'+esc(mMain)+'</span></td></tr>'+
+    '<tr><td>503 no_healthy_account</td><td>账号全在冷却 / 禁用 / 占满</td><td>看账号池，或一键签到解冻</td></tr>'+
+    '<tr><td>模型变笨、不调工具</td><td>custom 模式顶掉了系统提示词</td><td>改 passthrough（见上一条）</td></tr>'+
+    '<tr><td>面板打不开</td><td>面板服务没跑</td><td>双击 启动面板.bat</td></tr>'+
+    '</tbody></table></div>');
+
+  h+=tip('完整版教程见同目录 <span class="mono">使用教程.md</span>。');
+  $("#tut").innerHTML=h;
+}
+
+function renderFiles(){
+  var m=S.meta;if(!m)return;
+  var h="";
+  h+='<div style="font-size:12px;font-weight:600;margin-bottom:7px">账号文件 <span class="dim">'+esc(m.auths_dir)+'</span></div>';
+  if(!(m.auths||[]).length){
+    h+='<div class="empty" style="text-align:left;padding:4px 0">目录为空，还没有登录任何账号。</div>';
+  } else {
+    h+='<div class="tblwrap" style="max-height:230px"><table><thead><tr><th>文件</th><th>昵称</th>'+
+      '<th>uid</th><th class="num">大小</th><th>token</th><th>修改时间</th></tr></thead><tbody>'+
+      m.auths.map(function(a){
+        return '<tr><td class="mono" style="font-size:10.5px">'+esc(a.file)+'</td>'+
+          '<td>'+esc(a.nickname||"—")+'</td><td class="uid">'+esc(String(a.uid||"").slice(0,8))+'</td>'+
+          '<td class="num">'+num(a.bytes)+' B</td>'+
+          '<td>'+(a.has_token?'<span class="st healthy">有</span>':'<span class="st hard">无</span>')+
+            (a.has_refresh?' <span class="dim" style="font-size:10px">+refresh</span>':'')+'</td>'+
+          '<td class="dim" style="font-size:11px">'+esc(a.mtime?new Date(a.mtime*1000).toLocaleString("zh-CN",{hour12:false}):"—")+'</td></tr>'}).join("")+
+      '</tbody></table></div>';
+  }
+  h+='<div class="hr"></div><div class="grid2" style="gap:16px">';
+  h+='<div><div style="font-size:12px;font-weight:600;margin-bottom:7px">持久化状态 <span class="dim">'+esc(m.state_file)+'</span></div>';
+  if(!m.state||!m.state.accounts||!Object.keys(m.state.accounts).length){
+    h+='<div class="empty" style="text-align:left;padding:4px 0">'+
+      (m.state_file_exists?'文件存在，但暂无账号状态记录。':'文件尚未生成（还没有任何账号进入冷却/熔断）。')+'</div>';
+  } else {
+    var ks=Object.keys(m.state.accounts);
+    h+='<div class="tblwrap" style="max-height:210px"><table><thead><tr><th>uid</th><th class="num">积分</th>'+
+      '<th>状态</th><th>解冻时间</th></tr></thead><tbody>'+
+      ks.map(function(k){var s=m.state.accounts[k];
+        return '<tr><td class="uid">'+esc(k.slice(0,8))+'</td><td class="num">'+num(s.credits)+'</td>'+
+          '<td>'+(s.disabled?'<span class="st disabled">已禁用</span>':
+            (s.until&&Date.parse(s.until)>Date.now()?'<span class="st soft">冷却中</span>':'<span class="st healthy">正常</span>'))+'</td>'+
+          '<td class="dim" style="font-size:11px">'+esc(zeroT(s.until)?"—":new Date(s.until).toLocaleString("zh-CN",{hour12:false}))+'</td></tr>'}).join("")+
+      '</tbody></table></div>';
+  }
+  h+='</div>';
+  h+='<div><div style="font-size:12px;font-weight:600;margin-bottom:7px">'+(m.mode==="native"?"网关进程":"容器")+'</div>';
+  var cs=m.container_state||{};
+  if(m.mode==="native"){
+    h+='<dl class="kv">'+
+      '<dt>形态</dt><dd>原生进程（无 Docker）</dd>'+
+      '<dt>程序</dt><dd>bin\\wb2api.exe</dd>'+
+      '<dt>PID</dt><dd>'+esc(cs.pid||"—")+'</dd>'+
+      '<dt>状态</dt><dd>'+esc(cs.status||"未运行")+'</dd>'+
+      '<dt>已运行</dt><dd>'+dur(cs.uptime_sec||0)+'</dd>'+
+      '<dt>脚本目录</dt><dd>'+esc(m.scripts_dir)+'</dd>'+
+      '<dt>面板端口</dt><dd>'+esc(m.panel_port)+'</dd>'+
+      '</dl></div>';
+  }else{
+    h+='<dl class="kv">'+
+      '<dt>名称</dt><dd>'+esc(m.container)+'</dd>'+
+      '<dt>镜像</dt><dd>'+esc(m.image)+'</dd>'+
+      '<dt>状态</dt><dd>'+esc(cs.status||"未运行")+'</dd>'+
+      '<dt>健康检查</dt><dd>'+esc(cs.health||"—")+'</dd>'+
+      '<dt>已运行</dt><dd>'+dur(cs.uptime_sec||0)+'</dd>'+
+      '<dt>重启次数</dt><dd>'+esc(cs.restart_count||"0")+'</dd>'+
+      '<dt>脚本目录</dt><dd>'+esc(m.scripts_dir)+'</dd>'+
+      '<dt>面板端口</dt><dd>'+esc(m.panel_port)+'</dd>'+
+      '</dl></div>';
+  }
+  h+='</div>';
+  $("#files").innerHTML=h;
+}
+
+/* ---------------- 页签切换 ---------------- */
+var TABS=[["overview","概览"],["pool","账号池"],["failover","自动切换"],
+          ["ops","运维操作"],["api","接口测试"],["tut","接入教程"]];
+var PANES=["overview","pool","failover","ops","api","tut"];
+function renderTabs(){
+  var accs=(S.status&&S.status.accounts)||[];
+  var cfg=S.meta&&S.meta.config;
+  var bad=0;
+  accs.forEach(function(a){if(NONOK[stateOf(a,cfg).k])bad++});
+  var running=0;
+  if(S.jobCache){
+    (S.jobs||[]).forEach(function(id){var j=S.jobCache[id];if(j&&j.status==="running")running++});
+  }
+  var badge={pool:accs.length?String(accs.length):"",failover:bad?String(bad):"",
+             ops:running?String(running):""};
+  $("#mainTabs").innerHTML=TABS.map(function(t){
+    var n=badge[t[0]];
+    return '<button class="tabbtn'+(S.tab===t[0]?" on":"")+'" data-tab="'+t[0]+'">'+t[1]+
+      (n?'<span class="n'+(t[0]==="failover"?" bad":"")+'">'+esc(n)+'</span>':'')+'</button>'}).join("");
+}
+function switchTab(name){
+  if(PANES.indexOf(name)<0)name="overview";
+  S.tab=name;
+  PANES.forEach(function(p){
+    var el=document.getElementById("pane-"+p);
+    if(el)el.className="pane"+(p===name?" on":"");
+  });
+  renderTabs();
+  try{localStorage.setItem("wb2api-tab",name)}catch(e){}
+}
+
+/* ---------------- 接口探针 ---------------- */
+function runProbe(ep){
+  var out=$("#apiTestOut");if(!out)return;
+  var model="";
+  if(ep==="chat"){
+    var inp=$("#chatModel");model=inp?String(inp.value||"").trim():"";
+    if(!model){toast("请先填测试用的模型名","bad");return}
+  }
+  var label={healthz:"GET /healthz",status:"GET /status",models:"GET /v1/models",
+             chat:"POST /v1/chat/completions"}[ep]||ep;
+  markPending("probe:"+ep,label);
+  out.innerHTML='<div class="probe"><div class="pbh"><span class="dim">▌ '+esc(label)+' 请求中…</span></div></div>';
+  var t0=Date.now();
+  var q="/api/probe?ep="+encodeURIComponent(ep);
+  if(ep==="chat")q+="&model="+encodeURIComponent(model);
+  jget(q).then(function(r){
+    clearPending("probe:"+ep);
+    if(!r||r.error){
+      out.innerHTML='<div class="probe"><div class="pbh"><span class="st disabled">探针失败</span>'+
+        '<span class="dim">'+esc((r&&r.error)||"无响应")+'</span></div></div>';
+      toast("探针失败","bad");return;
+    }
+    var ms=(r.elapsed_ms!=null)?r.elapsed_ms:(Date.now()-t0);
+    var cls=r.status===0?"disabled":(r.ok?"healthy":(r.status<500?"soft":"breaker"));
+    var verdict=r.status===0?"网关不可达":(r.ok?"通过 · HTTP "+r.status:"HTTP "+r.status);
+    out.innerHTML='<div class="probe">'+
+      '<div class="pbh">'+
+        '<span class="st '+cls+'">'+esc(verdict)+'</span>'+
+        '<span class="chip"><b>'+esc(r.path)+'</b></span>'+
+        '<span class="chip">耗时 <b>'+num(ms)+' ms</b></span>'+
+        '<span class="chip">HTTP <b>'+(r.status===0?"—":r.status)+'</b></span>'+
+        (r.hint?'<span class="dim" style="font-size:11px">'+esc(r.hint)+'</span>':'')+
+      '</div>'+
+      '<div class="pbd">'+esc(r.preview||"(空响应)")+'</div>'+
+    '</div>';
+    toast(ep+" 测试："+verdict,r.ok?"ok":"bad");
+  }).catch(function(e){
+    clearPending("probe:"+ep);
+    out.innerHTML='<div class="probe"><div class="pbh"><span class="st disabled">探针请求失败</span>'+
+      '<span class="dim">'+esc(String(e))+'</span></div></div>';
+    toast("探针请求失败","bad");
+  });
+}
+
+/* ---------------- events wiring ---------------- */
+function bind(){
+  $("#btnRefresh").onclick=function(){refreshAll(true)};
+  // 注意：弹窗 DOM 位于脚本标签之后，此刻还不存在，不能在 bind 里直接绑定；
+  // 弹窗内的按钮/遮罩统一走 document 事件委托（见下方 click 处理器）。
+  $("#autoRefresh").onchange=function(){applyAuto()};
+  $("#intervalSel").onchange=function(){applyAuto();toast("刷新间隔 "+$("#intervalSel").value+"s")};
+  $("#btnTheme").onclick=function(){
+    var cur=document.documentElement.getAttribute("data-theme");
+    var next=cur==="dark"?"light":"dark";
+    document.documentElement.setAttribute("data-theme",next);
+    try{localStorage.setItem("wb2api-theme",next)}catch(e){}
+  };
+  try{var t=localStorage.getItem("wb2api-theme");if(t)document.documentElement.setAttribute("data-theme",t)}catch(e){}
+
+  document.addEventListener("click",function(ev){
+    var tgt=ev.target;
+    if(!tgt)return;
+    // 点遮罩空白处 = 关闭弹窗（并停止轮询）
+    if(tgt.id==="loginMask"){loginModalClose();return}
+    if(typeof tgt.closest!=="function")return;
+    var el=tgt.closest("[data-act],[data-copy],[data-copy-el],[data-job],[data-sort],[data-tab],[data-test],[data-import],[data-login-open],[data-modal-close],[data-ltab],[data-token-add],[data-open-auth]");
+    if(!el)return;
+    if(el.hasAttribute("data-import")){importLocalLogins(el.getAttribute("data-import"),el);return}
+    if(el.hasAttribute("data-login-open")){loginModalOpen();return}
+    if(el.hasAttribute("data-modal-close")){loginModalClose();return}
+    if(el.hasAttribute("data-open-auth")){
+      // 只有用户点了「在浏览器中打开」才打开浏览器（打开弹窗时不自动跳转）
+      if(LOGIN.url){try{window.open(LOGIN.url,"_blank")}catch(e){toast("浏览器拦截了新窗口，请复制地址手动打开","warn")}}
+      else toast("授权地址还没拿到，请稍候再试","bad");
+      return;
+    }
+    if(el.hasAttribute("data-ltab")){loginTab(el.getAttribute("data-ltab"));return}
+    if(el.hasAttribute("data-token-add")){tokenAdd(el);return}
+    if(el.hasAttribute("data-copy-el")){
+      var src=$("#"+el.getAttribute("data-copy-el"));
+      copy(src?(src.value||""):"","已复制授权链接");return;
+    }
+    if(el.hasAttribute("data-tab")){switchTab(el.getAttribute("data-tab"));return}
+    if(el.hasAttribute("data-test")){runProbe(el.getAttribute("data-test"));return}
+    if(el.hasAttribute("data-copy")){copy(el.getAttribute("data-copy"));return}
+    if(el.hasAttribute("data-job")){
+      S.selJob=el.getAttribute("data-job");
+      if(!(S.jobCache&&S.jobCache[S.selJob]))pollJob(S.selJob); else renderJobs();
+      return;
+    }
+    if(el.hasAttribute("data-sort")){
+      var k=el.getAttribute("data-sort");
+      if(S.sort===k)S.sortDir=-(S.sortDir||1);else{S.sort=k;S.sortDir=1}
+      renderAccounts((S.status&&S.status.accounts)||[],S.meta&&S.meta.config);
+      return;
+    }
+    var a=el.getAttribute("data-act");
+    if(a==="refresh"){refreshAll(true)}
+    else if(a==="signin"){runAction("signin",{},"批量签到")}
+    else if(a==="credit"){runAction("credit",{},"积分日报")}
+    else if(a==="credit_json"){runAction("credit_json",{},"积分明细")}
+    else if(a==="login_url"){runAction("login_url",{},"获取登录链接")}
+    else if(a==="login_poll"){runAction("login_poll",{},"完成登录")}
+    else if(a==="restart"){
+      if(confirm("重启"+(S.meta&&S.meta.mode==="native"?"网关":"容器")+"会中断当前所有在途请求，确认继续？"))runAction("restart",{},"重载账号");
+    }
+    else if(a==="tasks_all"){
+      var only=el.getAttribute("data-only")||"accept";
+      var dry=$("#taskDry")&&$("#taskDry").checked;
+      var tAcc=($("#taskAcc")&&$("#taskAcc").value)||"ALL";
+      var who=(tAcc==="ALL"?"全部账号":"该账号");
+      var seg=TASK_SEG[only]||only;
+      if(!dry){
+        var msg=(only==="claim")
+          ? "将对"+who+"逐个尝试领取已完成任务的奖励。\n\nclaim 幂等，重复点击无副作用；未真正达标的任务会返回 400 并被跳过。\n\n确认继续？"
+          : "将对"+who+"把全部「未接取」任务改为「已接取」。\n\n该操作只改任务状态，不产生任何上游上报。\n\n确认继续？";
+        if(!confirm(msg))return;
+      }
+      runAction("tasks_all",{only:only,yes:!dry,account:tAcc},seg);
+    }
+    else if(a==="ccswitch"){
+      var cApp=el.getAttribute("data-app")||"claude";
+      var cUrl=ccSwitchLink(cApp);
+      if(!cUrl){toast("还没拿到网关信息，稍后再试","bad");return}
+      openDeepLink(cUrl);
+      toast("已唤起 cc-switch，请在弹窗里确认导入","ok");
+    }
+    else if(a==="showraw"){
+      $("#jobArea").style.display="block";
+      S.selJob=null;
+      var j={title:"GET /status 原始响应",cmd:'curl.exe -s '+S.meta.api_base+'/status -H "Authorization: Bearer ***"',
+        status:"done",exit_code:0,
+        lines:JSON.stringify(S.status,null,2).split("\n")};
+      S.jobCache=S.jobCache||{};S.jobCache.__raw=j;S.selJob="__raw";
+      if(S.jobs.indexOf("__raw")<0)S.jobs.unshift("__raw");
+      renderJobs();
+    }
+  });
+
+  $("#accFilter").oninput=function(){renderAccounts((S.status&&S.status.accounts)||[],S.meta&&S.meta.config)};
+  $("#onlyActive").onchange=function(){renderAccounts((S.status&&S.status.accounts)||[],S.meta&&S.meta.config)};
+  $("#evOnlyImp").onchange=renderEvents;
+  $("#btnEvClear").onclick=function(){S.events=[];S.localEv=[];renderEvents();toast("已清空事件视图")};
+  $("#btnLogClear").onclick=function(){S.log=[];renderLogs()};
+}
+function applyAuto(){
+  if(S.timer){clearInterval(S.timer);S.timer=null}
+  if(!$("#autoRefresh").checked)return;
+  var iv=parseInt($("#intervalSel").value,10)*1000;
+  S.timer=setInterval(function(){loadStatus();loadHealth()},iv);
+}
+function refreshAll(manual){
+  var tasks=[loadMeta()];
+  tasks.push(jget("/api/status").then(function(d){
+    if(d&&d.error){S.status=null;showAlert(d);return}
+    S.status=d;hideAlert();diffStates(d.accounts||[]);renderAll();
+  }).catch(function(e){showAlert({error:"读取 /status 失败",detail:String(e)})}));
+  tasks.push(loadHealth());tasks.push(loadModels());tasks.push(tickEvents());tasks.push(tickLogs());
+  return Promise.all(tasks).then(function(){if(manual)toast("已刷新","ok")});
+}
+
+/* ---------------- boot ---------------- */
+bind();
+var savedTab="overview";
+try{savedTab=localStorage.getItem("wb2api-tab")||"overview"}catch(e){}
+switchTab(savedTab);
+refreshAll(false).then(applyAuto);
+setInterval(tickEvents,3000);
+setInterval(tickLogs,4000);
+window.addEventListener("beforeunload",function(){if(S.timer)clearInterval(S.timer)});
+})();
+</script>
+
+<!-- 添加账号弹窗（OAuth / Token / 本地导入；关闭即停止轮询） -->
+<div class="mask" id="loginMask">
+  <div class="modal">
+    <div class="mh"><b>添加 WorkBuddy 账号</b><button class="mx" data-modal-close title="关闭并停止轮询">✕</button></div>
+    <div class="mb">
+      <div class="ltabs">
+        <span class="on" data-ltab="oauth">🌐 OAuth 授权</span>
+        <span data-ltab="token">🔑 Token / JSON</span>
+        <span data-ltab="local">📄 本地导入</span>
+      </div>
+
+      <div class="ltab" id="ltab-oauth">
+        <div class="dim" style="font-size:11.5px">点击下方按钮将在浏览器中打开 WorkBuddy 授权页面。</div>
+        <div class="urlrow">
+          <input id="loginUrl" readonly placeholder="正在获取授权地址…">
+          <button class="btn sm" data-copy-el="loginUrl">复制</button>
+        </div>
+        <div class="dim" style="font-size:11px;text-align:center">
+          授权有效期 <span id="loginTtl">600</span>s · 轮询间隔 <span id="loginItv">2</span>s</div>
+        <div style="margin-top:12px">
+          <button class="btn primary" data-open-auth style="width:100%">在浏览器中打开</button>
+        </div>
+        <div class="waitbox" id="loginWait"><span class="spin"></span>正在获取授权地址…</div>
+        <div class="dim" style="font-size:11px;text-align:center;margin-top:8px">完成授权后，此窗口将自动更新</div>
+      </div>
+
+      <div class="ltab" id="ltab-token" style="display:none">
+        <div class="dim" style="font-size:11.5px;margin-bottom:7px">
+          粘贴 WorkBuddy 的 access token（JWT）。uid / 昵称 / 有效期会自动解析并写入账号池；
+          refresh token 可选，提供后该账号支持自动续期。</div>
+        <textarea id="tokAccess" rows="3" placeholder="eyJhbGciOi…（access token，必填）"></textarea>
+        <textarea id="tokRefresh" rows="2" placeholder="refresh token（可选）"></textarea>
+        <button class="btn primary" data-token-add style="width:100%">添加账号</button>
+        <div class="waitbox" id="tokWait" style="display:none"></div>
+      </div>
+
+      <div class="ltab" id="ltab-local" style="display:none">
+        <div id="loginLocalBody"><div class="dim" style="font-size:12px">加载中…</div></div>
+      </div>
+
+      <div class="notebox">
+        <b>仅授权 IDE 登录信息</b>
+        <ul style="margin:6px 0 0;padding-left:18px">
+          <li>三种方式添加的账号均写入账号池 <span class="mono">auths/</span>，成功后<b>自动重载网关</b>，无需再手动点。</li>
+          <li>OAuth：浏览器完成登录即自动入库；Token：适合已有现成 token 的场景；本地导入：复用本机客户端已保存的登录态。</li>
+          <li>账号卡片将按资源包展示配额、进度和到期时间。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
