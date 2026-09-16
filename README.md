@@ -14,6 +14,38 @@
 - **关窗即全停** —— Windows Job Object 绑定进程树，父进程死亡内核回收全部子进程
 - **反馈明确** —— 每个动作都有常驻状态条与实时输出，不靠一闪而过的 toast
 
+## 直接下载（已打包好的单文件 exe）
+
+不想自己编译的话，直接取打包好的版本 —— 内嵌 Python 运行时与全部网关二进制，**目标机器无需安装 Python**：
+
+**下载地址**
+
+```
+https://github.com/<owner>/<repo>/releases/latest/download/WorkBuddy2API.exe
+```
+
+> **维护者注意**：上面链接里的 `<owner>/<repo>` 是占位符，需要换成实际仓库地址。
+> 一条命令即可替换（README 与使用教程里的占位符会一起换掉）：
+>
+> ```bash
+> bash tools/set-repo.sh 你的用户名/仓库名
+> # 例：bash tools/set-repo.sh sy0137/wb2api-dashboard
+> ```
+
+双击就一个窗口，没有命令行窗口、不用外部浏览器。要求与说明：
+
+- **唯一系统要求**：WebView2 运行时（Win10 1803+ 与 Win11 系统自带；老系统装一次
+  Microsoft Edge WebView2 Runtime）
+- **内嵌内容**：Python 运行时、pywebview、网关 `wb2api.exe`、`login/credit/signin_bin`、
+  任务执行器 `tasks_all.exe`、面板页面
+- **数据根自动定位**：优先 exe 同目录；首次运行自动生成 `config.json` / `auths/` / `data/`
+- **首次打开账号池是空的**：用「添加账号」弹窗的三种方式添加
+  （OAuth 授权 / 粘贴 Token / 从本机客户端导入），成功后会**自动重载网关**
+- 详见下面「[分发给他人](#分发给他人便携使用)」一节
+
+> 想自己编译，或者要改代码，继续往下看 —— 自行构建需要先编出 `bin/` 下的网关二进制。
+
+
 ## 目录结构
 
 ```
@@ -33,7 +65,7 @@ wb2api-dashboard/
 └── tests/                  前端自检脚本 + 进程检查工具
 ```
 
-## 前置条件
+## 前置条件（自行构建时需要）
 
 | 需要 | 说明 |
 |---|---|
@@ -48,11 +80,12 @@ wb2api-dashboard/
 
 ## 构建 bin/（首次必做）
 
-本仓库**不包含**编译好的二进制，也**不包含**上游源码，需要自己编一次：
+本仓库**不包含**编译好的二进制，也**不包含**上游源码，需要自己编一次。先把两个仓库放到同一个父目录：
 
 ```bash
-git clone https://github.com/Sliverkiss/workbuddy2api
-bash tools/build-bins.sh <上游仓库路径>     # 省略参数则按同级目录自动查找
+git clone https://github.com/<owner>/<repo>              # 本项目
+git clone https://github.com/Sliverkiss/workbuddy2api    # 上游网关
+bash tools/build-bins.sh                                 # 省略参数时自动找同级 workbuddy2api
 ```
 
 产出 `bin/wb2api.exe`、`signin_bin.exe`、`login.exe`、`credit.exe`，并生成 `bin/config.json`
@@ -352,6 +385,32 @@ node tests\test-frontend-runtime.js
 - 「活跃上报」和「猫猫旅行」没有提供 CLI 入口，只能等 scheduler 定时执行，面板里只展示排程。
 
 ---
+
+## 发布新版本（维护者）
+
+单文件 exe 是构建产物、体积也大，所以**不进仓库**，改用 GitHub Release 附件分发。
+手动执行一次即可：
+
+```bash
+# 1. 先关掉正在运行的 exe（否则文件被占用，打包会失败）
+taskkill /F /IM WorkBuddy2API.exe
+
+# 2. 打包（前提：bin/ 已构建好，且已装 pywebview + pyinstaller）
+python build_exe.py                    # 产出 dist/WorkBuddy2API.exe
+
+# 3. 打 tag
+git tag v1.0.0 && git push origin v1.0.0
+
+# 4. 上传附件（文件名必须保持 WorkBuddy2API.exe，下载链接才有效）
+gh release create v1.0.0 dist/WorkBuddy2API.exe --title "v1.0.0" --notes "首个版本"
+#    没有 gh 就在网页上操作：Releases -> Draft a new release -> 把 exe 拖进附件区
+```
+
+README 顶部的下载链接指向 `releases/latest/download/WorkBuddy2API.exe`，
+所以**只要最新一个 Release 挂了名为 `WorkBuddy2API.exe` 的附件，链接就一直有效**。
+
+`dist/tasks_all.exe`（8.7 MB）是任务执行器的独立版本，需要的话可以一并作为附件上传。
+
 
 ## 许可证
 
