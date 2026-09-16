@@ -387,28 +387,56 @@ node tests\test-frontend-runtime.js
 ## 发布新版本（维护者）
 
 单文件 exe 是构建产物、体积也大，所以**不进仓库**，改用 GitHub Release 附件分发。
-手动执行一次即可：
+
+### 1. 先打包
 
 ```bash
-# 1. 先关掉正在运行的 exe（否则文件被占用，打包会失败）
-taskkill /F /IM WorkBuddy2API.exe
-
-# 2. 打包（前提：bin/ 已构建好，且已装 pywebview + pyinstaller）
-python build_exe.py                    # 产出 dist/WorkBuddy2API.exe
-
-# 3. 打 tag
-git tag v1.0.0 && git push origin v1.0.0
-
-# 4. 上传附件（文件名必须保持 WorkBuddy2API.exe，下载链接才有效）
-gh release create v1.0.0 dist/WorkBuddy2API.exe --title "v1.0.0" --notes "首个版本"
-#    没有 gh 就在网页上操作：Releases -> Draft a new release -> 把 exe 拖进附件区
+taskkill /F /IM WorkBuddy2API.exe      # 关掉正在运行的 exe，否则文件被占用、打包会失败
+python build_exe.py                     # 产出 dist/WorkBuddy2API.exe
 ```
 
-README 顶部的下载链接指向 `releases/latest/download/WorkBuddy2API.exe`，
-所以**只要最新一个 Release 挂了名为 `WorkBuddy2API.exe` 的附件，链接就一直有效**。
+前提：`bin/` 已构建好（见上一节），且已装 `pywebview` + `pyinstaller`。
+
+### 2. 上传：网页操作（零依赖，推荐）
+
+1. 打开 `https://github.com/你的用户名/你的仓库/releases/new`
+2. **Choose a tag** 里填一个新 tag（如 `v1.0.0`），点 **Create new tag**
+3. **Release title** 填 `v1.0.0`
+4. 把 `dist` 目录下的 `WorkBuddy2API.exe` **拖进**页面底部附件区（Attach binaries）
+5. 点 **Publish release**
+
+### 3. 上传：命令行（需要一个访问令牌）
+
+```bash
+export GITHUB_TOKEN=你的令牌          # 经典令牌给 repo 权限；细粒度令牌给 Contents: Read and write
+REPO=你的用户名/你的仓库
+
+# 先建 release，从返回 JSON 里记下 "id"
+curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
+     -H "Accept: application/vnd.github+json" \
+     https://api.github.com/repos/$REPO/releases \
+     -d '{"tag_name":"v1.0.0","name":"v1.0.0","body":"首个版本"}'
+
+# 再上传附件：host 是 uploads.github.com，且 name= 必须写成 WorkBuddy2API.exe
+curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
+     -H "Content-Type: application/octet-stream" \
+     --data-binary @dist/WorkBuddy2API.exe \
+     "https://uploads.github.com/repos/$REPO/releases/<上一步的 id>/assets?name=WorkBuddy2API.exe"
+```
+
+已经装了 `gh` 的话，一条命令即可：
+
+```bash
+gh release create v1.0.0 dist/WorkBuddy2API.exe --title "v1.0.0" --notes "首个版本"
+```
+
+### 4. 两个硬约束
+
+- **附件文件名必须保持 `WorkBuddy2API.exe`**：README 顶部的下载链接是
+  `releases/latest/download/WorkBuddy2API.exe`，名字一改就是 404。
+- `latest` 只认**最新一个正式 Release**：别把新版本勾成 `draft` 或 `pre-release`，否则链接仍指向旧版本。
 
 `dist/tasks_all.exe`（8.7 MB）是任务执行器的独立版本，需要的话可以一并作为附件上传。
-
 
 ## 许可证
 
