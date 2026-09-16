@@ -21,16 +21,14 @@
 **下载地址**
 
 ```
-https://github.com/<owner>/<repo>/releases/latest/download/WorkBuddy2API.exe
+https://github.com/shuyue01370/wb2api-dashboard/releases/latest/download/WorkBuddy2API.exe
 ```
 
-> **维护者注意**：上面链接里的 `<owner>/<repo>` 是占位符，需要换成实际仓库地址。
-> 一条命令即可替换（README 与使用教程里的占位符会一起换掉）：
->
-> ```bash
-> bash tools/set-repo.sh 你的用户名/仓库名
-> # 例：bash tools/set-repo.sh sy0137/wb2api-dashboard
-> ```
+> **维护者**：本仓库地址已配置为 `shuyue01370/wb2api-dashboard`。若日后改了仓库名，
+> 重跑一次替换即可，三种入口任选：
+> `python tools/set_repo.py 用户名/仓库名`（最省事，任意终端）、
+> `tools\set-repo.cmd 用户名/仓库名`（Windows 命令行）、
+> `bash tools/set-repo.sh 用户名/仓库名`（Git Bash、macOS、Linux）。
 
 双击就一个窗口，没有命令行窗口、不用外部浏览器。要求与说明：
 
@@ -83,7 +81,7 @@ wb2api-dashboard/
 本仓库**不包含**编译好的二进制，也**不包含**上游源码，需要自己编一次。先把两个仓库放到同一个父目录：
 
 ```bash
-git clone https://github.com/<owner>/<repo>              # 本项目
+git clone https://github.com/shuyue01370/wb2api-dashboard              # 本项目
 git clone https://github.com/Sliverkiss/workbuddy2api    # 上游网关
 bash tools/build-bins.sh                                 # 省略参数时自动找同级 workbuddy2api
 ```
