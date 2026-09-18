@@ -58,6 +58,10 @@ jobs:
       - name: HTTP 长连接 / 响应格式
         run: python tests/test-http-keepalive.py
 
+      # cc-switch 深链的探测/唤起 + 「不得写死本机配置」的守卫
+      - name: cc-switch 深链与死配置守卫
+        run: python tests/test-deeplink.py
+
       - name: 校验 index.html 为自包含单文件（无外部资源依赖）
         run: |
           python - <<'PY'

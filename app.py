@@ -22,6 +22,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
@@ -163,9 +164,14 @@ def _find_python() -> str:
     return "python"
 
 
+# 首次生成 config.json 的默认值。
+# **刻意不写死「本机那套配置」**：
+#   listen 默认只监听 127.0.0.1 —— 写 0.0.0.0 等于把网关开放给同一局域网里的所有人；
+#   api_key 每次现场随机生成 —— 写死 test_key 等于没有鉴权。
+# 想局域网共享、想固定 key，改生成出来的 config.json 即可。
 DEFAULT_CONFIG = {
-    "listen": "0.0.0.0:7863",
-    "api_key": "test_key",
+    "listen": "127.0.0.1:7863",
+    "api_key": "",              # 由 build_default_config() 现场填随机值
     "auth_dir": "auths",
     "state_file": "data/state.json",
     "server": {"max_body_mb": 8},
@@ -188,18 +194,30 @@ DEFAULT_CONFIG = {
 }
 
 
+def build_default_config() -> dict:
+    """首次生成 config.json 用：深拷贝默认值，并现场生成随机 api_key。"""
+    cfg = json.loads(json.dumps(DEFAULT_CONFIG))
+    cfg["api_key"] = "wb2_" + secrets.token_hex(16)
+    return cfg
+
+
 def _resolve_data_root() -> str:
     """确定数据根（账号池 auths / data / config.json 的家）。
 
     顺序（保证既有部署不受影响，同时让 exe 可独立分发）：
-      1. 环境变量 WB2API_DIR（显式指定，最高优先）
+      1. 环境变量 WB2API_DIR（显式指定，最高优先 —— 目录不存在就建出来，
+         否则「我明明指定了却没用上」极难排查）
       2. exe 同目录已有 config.json 或 auths/ → 便携模式（复制给别人后的运行形态）
-      3. 本机既有仓库 D:\\utils\\workbuddy2api → 开发机场景，向后兼容
+      3. 本机既有仓库（开发机场景，向后兼容）
       4. exe 同目录（首次运行的便携形态：会自动生成 config.json / auths / data）
     """
     env_dir = os.environ.get("WB2API_DIR")
-    if env_dir and os.path.isdir(env_dir):
-        return env_dir
+    if env_dir:
+        try:
+            os.makedirs(env_dir, exist_ok=True)
+            return env_dir
+        except OSError as exc:
+            print("[警告] WB2API_DIR=%s 不可用（%r），改用自动探测" % (env_dir, exc), flush=True)
     if (os.path.isfile(os.path.join(APP_DIR, "config.json"))
             or os.path.isdir(os.path.join(APP_DIR, "auths"))):
         return APP_DIR
@@ -219,8 +237,10 @@ def _ensure_data_layout(root: str) -> str:
     if not os.path.isfile(cfg_path):
         try:
             with open(cfg_path, "w", encoding="utf-8") as fh:
-                json.dump(DEFAULT_CONFIG, fh, ensure_ascii=False, indent=2)
+                json.dump(build_default_config(), fh, ensure_ascii=False, indent=2)
             print("[初始化] 已生成默认配置：%s" % cfg_path, flush=True)
+            print("[初始化] 网关 api_key 已随机生成；默认只监听 127.0.0.1（要局域网访问改 config.json）",
+                  flush=True)
         except OSError as exc:  # noqa: BLE001
             print("[警告] 生成默认配置失败：%r" % exc, flush=True)
     return cfg_path

@@ -346,10 +346,27 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   }
 
   console.log('  ---- 一键导入 cc-switch ----');
-  let apiPort = 0;
-  try { apiPort = (await sandboxFetch(BASE + '/api/meta').then(r => r.json())).api_port; } catch (e) {}
+  let apiPort = 0, metaCs = {};
+  try {
+    const m = await sandboxFetch(BASE + '/api/meta').then(r => r.json());
+    apiPort = m.api_port;
+    metaCs = m.ccswitch || {};
+  } catch (e) {}
+  // 深链要等 /v1/models 回来才会生成（模型名以实时列表为准，拿不到就不给导入）——
+  // 这里等它就绪，最多 10 秒
+  for (let i = 0; i < 20 && !H('#ccswitch').includes('ccswitch://'); i++) {
+    await new Promise(r => setTimeout(r, 500));
+  }
   const cc = H('#ccswitch');
   ok(cc.length > 0, 'cc-switch 区块已渲染');
+  if (metaCs.registered) {
+    ok(cc.includes('已注册') && cc.includes(metaCs.exe),
+       '已注册时显示实测到的处理程序路径（' + metaCs.exe + '）');
+  } else {
+    ok(cc.includes('未检测到'), '未检测到协议时给出明确提示');
+  }
+  ok(!cc.includes('HKEY_CLASSES_ROOT'), '前端不再写死注册表位置（改由后端实测）');
+  ok(html.includes('id="dlgMask"'), '通用提示弹窗 DOM 已内置（唤起失败时用）');
   ok(cc.includes('ccswitch://v1/import?'), '生成了 ccswitch:// 深链');
   ok(cc.includes('app=claude'), '含 Claude Code 深链（app=claude）');
   ok(cc.includes('app=codex'), '含 Codex 深链（app=codex）');
@@ -363,7 +380,8 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   ok(cc.includes('data-act="ccswitch"') && cc.includes('data-app="claude"') && cc.includes('data-app="codex"'),
      '两个导入按钮都在');
   ok(cc.includes('15721'), '说明了本地路由端口 15721');
-  ok(cc.includes('HKEY_CLASSES_ROOT'), '注明协议注册位置');
+  ok(cc.includes('data-act="ccswitch"') && !cc.includes('data-copy=""'),
+     '深链就绪时复制按钮不指向空串');
 
   console.log('  ---- 按钮反馈 ----');
   ok(getEl('#actStatus') !== undefined, '存在 #actStatus 状态条');

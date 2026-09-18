@@ -1610,10 +1610,13 @@ function renderModels(){
   if(!d||d.error){$("#models").innerHTML='<div class="empty">无法读取模型列表</div>';return}
   var list=d.data||[];
   $("#models").innerHTML='<div class="chip">共 <b>'+list.length+'</b> 个模型</div>'+
+    '</div></div>'+
     '<div style="margin-top:8px">'+list.map(function(m){
       return '<span class="chip">'+esc(m.id)+' <span class="dim">'+
         (m.context_length?Math.round(m.context_length/1024)+"K":"")+'</span></span>'}).join("")+'</div>';
   fillModelOptions();
+  renderCcSwitch();   // 模型列表就绪后立刻补上 cc-switch 深链（否则要等下一次 meta 刷新）
+  renderTutorial();   // 教程里的模型名同理：示例要跟着实时列表走
 }
 function renderApiHelp(){
   var m=S.meta;if(!m)return;
@@ -1661,28 +1664,40 @@ function renderApiHelp(){
 }
 /* ---------------- 一键导入 cc-switch（ccswitch:// 深链） ---------------- */
 // cc-switch 官方深链协议：ccswitch://v1/import?resource=provider&app=..&name=..&endpoint=..&apiKey=..&model=..
-// 点击后由系统按 HKEY_CLASSES_ROOT\ccswitch 唤起 cc-switch，弹确认框后写入供应商。
-// 关键前提：cc-switch 自带本地代理（默认 127.0.0.1:15721）能 Anthropic <-> OpenAI 互转，
-// 所以 Claude Code 可以直连本网关（OpenAI 格式），不需要 claude-code-router。
+// 由**本机后端**（POST /api/open-deeplink）调用系统 ShellExecute 唤起，与浏览器/WebView2 无关。
+// 关键前提：那台电脑必须装过 cc-switch —— 协议是它的安装程序注册的（且只写 HKCU，按用户）。
+//
+// 模型名一律以 /v1/models 的**实时列表**为准：偏好名只在列表里确实存在时才用，否则退到列表第一个；
+// 列表拿不到就干脆不给导入 —— 绝不把写死的模型名塞进深链（换台机器/换上游那名字可能不存在）。
+function modelIds(){
+  return ((S.models&&S.models.data)||[]).map(function(x){return String(x.id||"")}).filter(Boolean);
+}
+function pickModel(prefs){
+  var ids=modelIds();
+  if(!ids.length)return "";
+  for(var i=0;i<(prefs||[]).length;i++){
+    if(ids.indexOf(prefs[i])>=0)return prefs[i];
+  }
+  return ids[0];
+}
 function ccSwitchLink(app){
   var m=S.meta;if(!m)return "";
-  var ids=((S.models&&S.models.data)||[]).map(function(x){return x.id});
-  function prefer(l){for(var i=0;i<l.length;i++){if(!ids.length||ids.indexOf(l[i])>=0)return l[i]}return l[0]}
-  var main=prefer(["deepseek-v4.1-flash","deepseek-v4-pro","glm-5.3"]);
-  var fast=prefer(["glm-5.3-flash","kimi-k3-1","glm-5.1"]);
-  var pro=prefer(["deepseek-v4-pro","deepseek-v4.1-flash","glm-5.3"]);
+  var main=pickModel(["deepseek-v4.1-flash","deepseek-v4-pro","glm-5.3"]);
+  if(!main)return "";
+  var fast=pickModel(["glm-5.3-flash","kimi-k3-1","glm-5.1"]);
+  var pro=pickModel(["deepseek-v4-pro","deepseek-v4.1-flash","glm-5.3"]);
   var p=[["resource","provider"],["app",app],
          ["name","WorkBuddy2API 本地网关"],
          ["endpoint","http://127.0.0.1:"+m.api_port+"/v1"],
-         ["apiKey",m.api_key||"local"],
+         ["apiKey",m.api_key||""],
          ["model",main],
          ["apiFormat","openai_chat"]];
   if(app==="claude"){
     // [1m] 是 Claude Code 官方的 1M 上下文开关：Claude Code 发请求前会把后缀剥掉，
     // 网关/上游拿到的仍是干净模型名（实测上游不认带后缀的名字，报 11102）。
-    p.push(["haikuModel",fast]);
+    p.push(["haikuModel",fast||main]);
     p.push(["sonnetModel",main+"[1m]"]);
-    p.push(["opusModel",pro+"[1m]"]);
+    p.push(["opusModel",(pro||main)+"[1m]"]);
     p.push(["notes","本地网关（OpenAI 兼容）。sonnet/opus 已带 [1m] 后缀启用 1M 上下文；需开启本地路由。"]);
   }else{
     p.push(["notes","本地网关（OpenAI 兼容 / chat completions）。"]);
@@ -1690,30 +1705,91 @@ function ccSwitchLink(app){
   return "ccswitch://v1/import?"+p.map(function(kv){
     return kv[0]+"="+encodeURIComponent(kv[1])}).join("&");
 }
-function openDeepLink(url){
-  var a=document.createElement("a");
-  a.href=url;a.style.display="none";
-  document.body.appendChild(a);
-  if(a.click)a.click();
-  a.remove();
+
+/* 通用提示弹窗：面板自己弹框说明原因，取代"点了没反应" */
+function dlgShow(title,html){
+  var m=$("#dlgMask");
+  if(!m){try{alert(title+"\n\n"+String(html).replace(/<[^>]+>/g,""))}catch(e){}return}
+  var t=$("#dlgTitle"),b=$("#dlgBody");
+  if(t)t.textContent=title;
+  if(b)b.innerHTML=html;
+  m.classList.add("on");
+}
+function dlgClose(){var m=$("#dlgMask");if(m)m.classList.remove("on")}
+
+/* 唤起 cc-switch：交给本机后端走 ShellExecute。
+   失败时**弹框说明原因**（协议没注册 / 处理程序不存在），并自动复制深链兜底。 */
+function openDeepLink(url,btn){
+  var old=btn?btn.innerHTML:"";
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>唤起中…'}
+  jpost("/api/open-deeplink",{url:url}).then(function(d){
+    if(d&&d.ok){
+      var p=d.protocol||{};
+      toast("已唤起 cc-switch，请在它弹出的确认框里确认","ok");
+      setActStatus("ok","已唤起 cc-switch",p.exe?("处理程序："+p.exe):"");
+      return;
+    }
+    var info=(d&&d.protocol)||{};
+    var lines=[];
+    lines.push(esc((d&&d.error)||"唤起失败"));
+    if(!info.registered){
+      lines.push("cc-switch 的深链要靠它自己注册 <b>ccswitch://</b> 协议才能唤起——"+
+        "安装程序会注册，<b>绿色解压版不会</b>。");
+      lines.push("请先在这台电脑上<b>安装一次 cc-switch</b>，再回来点这个按钮。");
+    }else if(info.exe&&!info.exe_exists){
+      lines.push("注册表里指向的处理程序不存在：<span class=\"mono\">"+esc(info.exe)+"</span>");
+      lines.push("说明 cc-switch 被移动或删除了，重装即可。");
+    }
+    lines.push("深链已复制到剪贴板：可以拿到<b>已装 cc-switch 的电脑</b>上，"+
+      "用 Win+R 或浏览器地址栏粘贴、回车即可导入。");
+    dlgShow("无法唤起 cc-switch",
+      lines.map(function(x){
+        return '<div style="margin:6px 0;font-size:12.5px;line-height:1.7">'+x+'</div>'}).join("")+
+      '<div class="hr"></div><div class="code" style="max-height:78px">'+esc(url)+'</div>');
+    copy(url,"深链已复制到剪贴板");
+    setActStatus("warn","未能唤起 cc-switch",info.note||"已复制深链，可在装了 cc-switch 的机器上粘贴使用");
+  }).catch(function(e){
+    dlgShow("无法唤起 cc-switch",
+      '<div style="font-size:12.5px">请求本机服务失败：'+esc(String(e))+'</div>');
+    setActStatus("bad","唤起请求失败",String(e));
+  }).then(function(){if(btn){btn.disabled=false;btn.innerHTML=old}});
 }
 function renderCcSwitch(){
   var m=S.meta;if(!m)return;
   var el=$("#ccswitch");if(!el)return;
   function block(label,desc,url,app){
+    // url 为空 = 还没拿到网关的模型列表：给出提示并禁用按钮，而不是留一个空框
+    var ready=!!url;
     return '<div style="margin-bottom:14px">'+
       '<div style="font-size:12px;font-weight:600;margin-bottom:4px">'+label+'</div>'+
       '<div class="dim" style="font-size:11px;margin-bottom:6px">'+desc+'</div>'+
-      '<div class="code" style="max-height:82px">'+esc(url)+'</div>'+
+      (ready
+        ? '<div class="code" style="max-height:82px">'+esc(url)+'</div>'
+        : '<div class="dim" style="font-size:11.5px">等网关模型列表就绪后这里会出现深链（需网关在运行；可点顶栏「刷新」重试）</div>')+
       '<div style="margin-top:6px;display:flex;gap:7px;flex-wrap:wrap;align-items:center">'+
-      '<button class="btn primary sm" data-act="ccswitch" data-app="'+app+'">导入到 cc-switch</button>'+
-      '<button class="btn sm" data-copy="'+esc(url)+'">复制深链</button>'+
+      '<button class="btn primary sm" data-act="ccswitch" data-app="'+app+'"'+(ready?'':' disabled')+'>导入到 cc-switch</button>'+
+      (ready?'<button class="btn sm" data-copy="'+esc(url)+'">复制深链</button>':'')+
       '</div></div>';
   }
-  el.innerHTML=
-    '<div class="warnbox">cc-switch 官方的 <span class="mono">ccswitch://</span> 深链协议：点按钮会唤起 cc-switch 并弹出<b>导入确认框</b>，'+
-    '确认后写入供应商，不用手填 base_url / key / 模型。'+
-    '<br>本机协议已注册：<span class="mono">HKEY_CLASSES_ROOT\\ccswitch</span> → <span class="mono">D:\\soft\\cc_switch\\cc-switch.exe "%1"</span>。</div>'+
+  // 协议状态**实测**（每台电脑都不同：cc-switch 的安装程序只写 HKCU，按用户走）
+  var cs=m.ccswitch||{};
+  var protoBox;
+  if(!cs.supported){
+    protoBox='<div class="warnbox">当前平台：'+esc(cs.note||"非 Windows，深链由系统自行解析")+'</div>';
+  }else if(cs.registered&&cs.exe_exists){
+    protoBox='<div class="notebox" style="margin-top:0">本机协议：<b style="color:var(--ok)">已注册 ✓</b>'+
+      '（<span class="mono">'+esc(cs.hive||"?")+'</span>）→ <span class="mono">'+esc(cs.exe)+'</span></div>';
+  }else if(cs.registered){
+    protoBox='<div class="warnbox">本机协议<b>已注册</b>，但注册表指向的处理程序不存在：'+
+      '<span class="mono">'+esc(cs.exe||"?")+'</span><br>说明 cc-switch 被移动或删除了，建议重装。</div>';
+  }else{
+    protoBox='<div class="warnbox">本机<b>未检测到 ccswitch:// 协议</b>：深链要靠 cc-switch 自己注册协议才能唤起'+
+      '（安装程序会注册，<b>绿色解压版不会</b>）。<br>请先在这台电脑上安装一次 cc-switch；'+
+      '没有它时点「导入」会弹出说明，并把深链复制到剪贴板。</div>';
+  }
+  el.innerHTML= protoBox+
+    '<div class="dim" style="font-size:11.5px;margin-top:9px">cc-switch 官方的 <span class="mono">ccswitch://</span> 深链协议：点按钮唤起 cc-switch 并弹出<b>导入确认框</b>，'+
+    '确认后写入供应商，不用手填 base_url / key / 模型。</div>'+
     '<div class="hr"></div>'+
     block('① 导入到 Claude Code <span class="dim">(app=claude)</span>',
       'endpoint 填的是<b>本网关地址</b>；cc-switch 的本地代理会把 Anthropic 请求转成 OpenAI Chat 再发过来，<b>不需要 claude-code-router</b>。',
@@ -1748,18 +1824,18 @@ function renderTutorial(){
   var m=S.meta;if(!m)return;
   var host="http://127.0.0.1:"+m.api_port;
   var base=host+"/v1";
-  var key=m.api_key||"test_key";
-  var ids=((S.models&&S.models.data)||[]).map(function(x){return x.id});
-  function prefer(l){for(var i=0;i<l.length;i++){if(!ids.length||ids.indexOf(l[i])>=0)return l[i]}return l[0]}
-  var mMain=prefer(["deepseek-v4.1-flash","deepseek-v4-pro","glm-5.3"]);
-  var mFast=prefer(["glm-5.3-flash","kimi-k3-1","glm-5.1"]);
-  var mThink=prefer(["deepseek-v4-pro","deepseek-v4.1-flash","glm-5.3"]);
-  var mLong=prefer(["hy4-preview","kimi-k3-1","deepseek-v4.1-flash"]);
+  var key=m.api_key||"";
+  var ids=modelIds();
+  var mMain=pickModel(["deepseek-v4.1-flash","deepseek-v4-pro","glm-5.3"]);
+  var mFast=pickModel(["glm-5.3-flash","kimi-k3-1","glm-5.1"]);
+  var mThink=pickModel(["deepseek-v4-pro","deepseek-v4.1-flash","glm-5.3"]);
+  var mLong=pickModel(["hy4-preview","kimi-k3-1","deepseek-v4.1-flash"]);
   var mList=[];
-  [mMain,"glm-5.3","kimi-k3-1","minimax-m3",mFast].forEach(function(x){
-    if(mList.indexOf(x)<0&&(!ids.length||ids.indexOf(x)>=0))mList.push(x)});
-  if(mList.length<3){ids.forEach(function(x){if(mList.length<4&&mList.indexOf(x)<0)mList.push(x)})}
-  if(!mList.length)mList=[mMain];
+  // 只列网关实时返回的模型（写死的名字换台机器可能根本不存在）
+  [mMain,mFast,mThink,mLong].forEach(function(x){
+    if(x&&mList.indexOf(x)<0)mList.push(x)});
+  ids.forEach(function(x){if(mList.length<4&&mList.indexOf(x)<0)mList.push(x)});
+  if(!mList.length)mList=[mMain||""];
   var mListJson=mList.map(function(x){return '"'+x+'"'}).join(",\n        ");
 
   function cb(s,note){
@@ -2077,9 +2153,11 @@ function bind(){
     if(!tgt)return;
     // 点遮罩空白处 = 关闭弹窗（并停止轮询）
     if(tgt.id==="loginMask"){loginModalClose();return}
+    if(tgt.id==="dlgMask"){dlgClose();return}
     if(typeof tgt.closest!=="function")return;
-    var el=tgt.closest("[data-act],[data-copy],[data-copy-el],[data-job],[data-sort],[data-tab],[data-test],[data-import],[data-login-open],[data-modal-close],[data-ltab],[data-token-add],[data-open-auth],[data-block],[data-unblock],[data-block-list],[data-pool-remove]");
+    var el=tgt.closest("[data-act],[data-copy],[data-copy-el],[data-job],[data-sort],[data-tab],[data-test],[data-import],[data-login-open],[data-modal-close],[data-dlg-close],[data-ltab],[data-token-add],[data-open-auth],[data-block],[data-unblock],[data-block-list],[data-pool-remove]");
     if(!el)return;
+    if(el.hasAttribute("data-dlg-close")){dlgClose();return}
     if(el.hasAttribute("data-block")){blockLocalLogin(el.getAttribute("data-block"),el);return}
     if(el.hasAttribute("data-unblock")){unblockLocalLogin(el.getAttribute("data-unblock"),el);return}
     if(el.hasAttribute("data-block-list")){S.showBlocked=!S.showBlocked;renderLocalAccounts();return}
@@ -2140,9 +2218,8 @@ function bind(){
     else if(a==="ccswitch"){
       var cApp=el.getAttribute("data-app")||"claude";
       var cUrl=ccSwitchLink(cApp);
-      if(!cUrl){toast("还没拿到网关信息，稍后再试","bad");return}
-      openDeepLink(cUrl);
-      toast("已唤起 cc-switch，请在弹窗里确认导入","ok");
+      if(!cUrl){toast("还没拿到网关的模型列表，稍后再试","bad");return}
+      openDeepLink(cUrl,el);
     }
     else if(a==="showraw"){
       $("#jobArea").style.display="block";
@@ -2246,6 +2323,15 @@ window.__wb2apiTest={esc:esc,errText:errText,showAlert:showAlert,hideAlert:hideA
         </ul>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- 通用提示弹窗：面板自己把原因说清楚（如 cc-switch 深链唤不起来），取代"点了没反应" -->
+<div class="mask" id="dlgMask">
+  <div class="modal" style="width:min(560px,92vw)">
+    <div class="mh"><b id="dlgTitle">提示</b>
+      <button class="mx" data-dlg-close title="关闭">✕</button></div>
+    <div class="mb" id="dlgBody"></div>
   </div>
 </div>
 </body>

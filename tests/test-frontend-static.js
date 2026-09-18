@@ -97,9 +97,8 @@ ok(code.includes('data-act="ccswitch"'), '存在导入按钮 data-act="ccswitch"
 ok(code.includes('"apiFormat","openai_chat"'), '深链附带 apiFormat=openai_chat');
 ['resource', 'app', 'name', 'endpoint', 'apiKey', 'model'].forEach(k =>
   ok(new RegExp('\\["' + k + '"').test(code), '深链含参数 ' + k));
-ok(code.includes('HKEY_CLASSES_ROOT'), '注明了协议注册位置');
-// cc-switch 的注册表键是 ccswitch（无连字符），别写成 cc-switch
-ok(!/HKEY_CLASSES_ROOT\\\\cc-switch/.test(code), '注册表键名写的是 ccswitch 而不是 cc-switch');
+// 协议状态改为**实测**后，前端不再出现写死的注册表位置 / 处理程序路径（见 4l 段）
+ok(!code.includes('HKEY_CLASSES_ROOT'), '前端不再写死注册表位置（改为后端实测）');
 ok(code.includes('15721'), '说明了 cc-switch 本地代理端口（15721）');
 
 // ---------- 4e. 按钮「执行中」状态与反馈 ----------
@@ -231,6 +230,21 @@ ok(/function jget\(url\)\{return jreq\(/.test(code) && /function jpost\(url,body
 ok(!/return r\.json\(\)/.test(code), '不再直接 r.json()（那会丢掉状态码与响应体）');
 ok(code.includes('响应不是 JSON'), '非 JSON 响应会把状态码与响应体片段带进错误信息');
 ok(/\.then\(function\(r\)\{[\s\S]{0,80}return r\.text\(\)/.test(code), 'jreq 先取 text 再自行 JSON.parse');
+
+// ---------- 4l. cc-switch：状态必须实测，导入必须走本机后端 ----------
+ok(code.includes('function openDeepLink') && code.includes('/api/open-deeplink'),
+  '导入按钮由本机后端唤起协议（不再靠网页内跳转，那会在拿不到处理程序时静默失败）');
+ok(code.includes('function pickModel') && !/function prefer\(/.test(code),
+  '模型名统一由 pickModel 从实时列表挑（旧的 prefer 已移除）');
+ok(code.includes('if(!main)return ""'), '拿不到实时模型列表时不给导入（不塞写死的模型名）');
+ok(!/D:\\\\soft/.test(code), '前端不再出现开发者本机的 cc-switch 路径');
+ok(html.includes('id="dlgMask"') && html.includes('data-dlg-close'),
+  '存在通用提示弹窗（唤起失败时弹框说明原因）');
+ok(code.includes('function dlgShow') && code.includes('function dlgClose'), '弹窗开关函数存在');
+ok(/m\.ccswitch/.test(code), '协议状态取自 /api/meta 的实测结果 ccswitch');
+ok(code.includes('未检测到 ccswitch'), '未注册协议时有可操作的提示文案');
+ok(code.includes('已注册 ✓'), '已注册时显示具体处理程序路径');
+ok(!/test_key/.test(code), '前端不再把 test_key 当兜底 key');
 
 // ---------- 5. 兜底：不应出现未转义的 </script> 或裸 fetch 跨域 ----------
 ok(!/fetch\(\s*["'`]http:\/\/localhost:7863/.test(code),

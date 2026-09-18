@@ -21,6 +21,7 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -201,22 +202,62 @@ def wait_healthz(timeout: float = 20.0) -> bool:
     return False
 
 
+def _app_paths_lookup(exe_name: str) -> str:
+    """从注册表 App Paths 取可执行文件全路径（浏览器装在自定义目录时靠它）。"""
+    try:
+        import winreg
+    except Exception:
+        return ""
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for sub in (r"Software\Microsoft\Windows\CurrentVersion\App Paths\%s" % exe_name,
+                    r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\%s" % exe_name):
+            try:
+                with winreg.OpenKey(hive, sub) as key:
+                    path = str(winreg.QueryValueEx(key, "")[0] or "")
+                if path:
+                    return path
+            except Exception:
+                continue
+    return ""
+
+
 def find_app_browser():
     """优先 Chrome，其次 Edge，返回 (exe路径, 可否等待) 或 (None, False)。
+
+    探测顺序（**不写死 C:\\Program Files** —— Chrome 默认是按用户安装的）：
+      1. 常见安装位置：%LOCALAPPDATA%（按用户）→ %ProgramFiles% → %ProgramFiles(x86)%
+      2. 注册表 App Paths（装到自定义目录）
+      3. PATH 里能找到的 chrome.exe / msedge.exe
 
     Chrome --app + 独立 user-data-dir：新实例稳定存活，进程退出=窗口关闭，可精确等待。
     Edge --app：若机器上已有 Edge 在跑（含 startup boost 后台实例），会把窗口移交给
     现有实例并立即退出（实测 returncode=0）——进程退出不等于窗口关闭，不可等待。
     """
+    home = os.path.expanduser("~")
+    local = os.environ.get("LOCALAPPDATA") or os.path.join(home, "AppData", "Local")
+    pf = os.environ.get("ProgramFiles") or r"C:\Program Files"
+    pf86 = os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)"
     candidates = [
-        (r"C:\Program Files\Google\Chrome\Application\chrome.exe", True),
-        (r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe", True),
-        (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe", False),
-        (r"C:\Program Files\Microsoft\Edge\Application\msedge.exe", False),
+        # Chrome：按用户安装最常见，排最前
+        (os.path.join(local, r"Google\Chrome\Application\chrome.exe"), True),
+        (os.path.join(pf, r"Google\Chrome\Application\chrome.exe"), True),
+        (os.path.join(pf86, r"Google\Chrome\Application\chrome.exe"), True),
+        # Edge
+        (os.path.join(pf86, r"Microsoft\Edge\Application\msedge.exe"), False),
+        (os.path.join(pf, r"Microsoft\Edge\Application\msedge.exe"), False),
+        (os.path.join(local, r"Microsoft\Edge\Application\msedge.exe"), False),
     ]
-    for p, waitable in candidates:
-        if os.path.isfile(p):
-            return p, waitable
+    for path, waitable in candidates:
+        if os.path.isfile(path):
+            return path, waitable
+    for exe_name, waitable in (("chrome.exe", True), ("msedge.exe", False)):
+        path = _app_paths_lookup(exe_name)
+        if path and os.path.isfile(path):
+            return path, waitable
+    for exe_name, waitable in (("chrome.exe", True), ("msedge.exe", False)):
+        path = shutil.which(exe_name)
+        if path:
+            return path, waitable
     return None, False
 
 
@@ -360,9 +401,15 @@ def main() -> int:
         except Exception as exc:
             say(" [警告] 应用窗口启动失败（%s），回退默认浏览器。" % exc)
             win_proc = None
-    if win_proc is None and browser is None:
+    if not browser:
+        # 一个都没探到：不是"退出"，而是回退到系统默认浏览器，别让用户面对空白
         webbrowser.open("http://127.0.0.1:%d" % PANEL_PORT)
-        say(" [窗口] 已用系统默认浏览器打开（未找到 Chrome/Edge）。")
+        say(" [窗口] 未找到 Chrome / Edge，已用系统默认浏览器打开。")
+        say("        关闭本控制台窗口或按 Ctrl+C 即可停止全部服务。")
+    elif win_proc is None:
+        # 找到了浏览器但启动失败（异常分支已置 None）→ 同样回退，别只留一条警告
+        webbrowser.open("http://127.0.0.1:%d" % PANEL_PORT)
+        say(" [窗口] 应用窗口启动失败，已用系统默认浏览器打开面板。")
         say("        关闭本控制台窗口或按 Ctrl+C 即可停止全部服务。")
 
     say("-" * 68)

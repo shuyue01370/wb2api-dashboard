@@ -888,6 +888,133 @@ def next_fire(hours, now=None):
 
 
 # ---------------------------------------------------------------------------
+# cc-switch 深链协议：本机探测 + 唤起
+#
+# 为什么必须运行时探测：`ccswitch://` 是**安装 cc-switch 时才写进注册表**的自定义协议，
+# 而且只写 HKCU（按用户）——换台机器 / 换个 Windows 账户就没了。
+# 面板上曾经把「协议已注册 + 处理程序路径」整句**写死**在页面里，在别人的电脑上是假信息，
+# 还把开发者的本机路径暴露了出去。这里一律实测（tests/test-deeplink.py 有守卫断言）。
+# ---------------------------------------------------------------------------
+
+CCSWITCH_SCHEME = "ccswitch:"
+CCSWITCH_PROGID = "ccswitch"
+
+
+def _exe_from_command(cmd: str) -> str:
+    """从协议命令串里取出 exe 路径：'"C:\\...\\x.exe" "%1"' → 'C:\\...\\x.exe'。"""
+    cmd = str(cmd or "").strip()
+    if cmd.startswith('"'):
+        end = cmd.find('"', 1)
+        if end > 1:
+            return cmd[1:end]
+    return cmd.split(" ")[0] if cmd else ""
+
+
+def ccswitch_protocol() -> dict:
+    """探测本机 ccswitch:// 的处理程序（只读注册表，不启动任何进程）。"""
+    out = {
+        "supported": os.name == "nt",
+        "registered": False,
+        "command": "",
+        "exe": "",
+        "exe_exists": False,
+        "hive": "",
+        "note": "",
+    }
+    if os.name != "nt":
+        out["note"] = "当前平台不是 Windows，深链由系统自行解析"
+        return out
+    try:
+        import winreg
+    except Exception as exc:  # pragma: no cover
+        out["note"] = "无法读取注册表：%r" % exc
+        return out
+
+    # HKCR 是合并视图（HKLM + HKCU），先查它拿到 Windows 实际会用到的那个；
+    # 再单独查两个 hive 便于把「谁注册的」说清楚。
+    probes = (
+        ("HKCR", winreg.HKEY_CLASSES_ROOT, r"%s\shell\open\command" % CCSWITCH_PROGID),
+        ("HKCU", winreg.HKEY_CURRENT_USER,
+         r"Software\Classes\%s\shell\open\command" % CCSWITCH_PROGID),
+        ("HKLM", winreg.HKEY_LOCAL_MACHINE,
+         r"SOFTWARE\Classes\%s\shell\open\command" % CCSWITCH_PROGID),
+    )
+    for hive, root, path in probes:
+        try:
+            with winreg.OpenKey(root, path) as key:
+                cmd = str(winreg.QueryValueEx(key, "")[0] or "")
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        if not cmd:
+            continue
+        exe = _exe_from_command(cmd)
+        out.update({
+            "registered": True,
+            "command": cmd,
+            "exe": exe,
+            "exe_exists": bool(exe) and os.path.isfile(exe),
+            "hive": hive,
+        })
+        break
+
+    if not out["registered"]:
+        out["note"] = ("未检测到 ccswitch:// 协议：这台电脑没有安装 cc-switch，"
+                       "或者用的是没跑过安装程序的绿色版")
+    elif not out["exe_exists"]:
+        out["note"] = ("注册表里指向的 cc-switch.exe 不存在：%s（安装被移动或删除，建议重装）"
+                       % (out["exe"] or "?"))
+    return out
+
+
+def open_deeplink(url: str) -> dict:
+    """用系统默认处理程序唤起自定义协议链接。
+
+    **白名单只允许 `ccswitch:`** —— 这个接口在本机 7864 上，绝不能变成通用协议启动器。
+    Windows 走 os.startfile（ShellExecute，与浏览器/WebView2 无关，两种模式都可用）；
+    macOS 用 open，Linux 用 xdg-open。
+    """
+    url = str(url or "").strip()
+    if not url:
+        return {"ok": False, "error": "缺少 url"}
+    if not url.lower().startswith(CCSWITCH_SCHEME):
+        return {"ok": False, "error": "只允许唤起 %s 深链" % CCSWITCH_SCHEME}
+
+    info = ccswitch_protocol()
+    if info["supported"] and not info["registered"]:
+        return {"ok": False, "error": info["note"] or "本机未注册 ccswitch:// 协议",
+                "protocol": info}
+    try:
+        if os.name == "nt":
+            os.startfile(url)          # noqa: S606 —— 上面已做协议白名单校验
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", url])
+        else:
+            subprocess.Popen(["xdg-open", url])
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": "唤起失败：%r" % exc, "protocol": info}
+    return {"ok": True, "url": url, "protocol": info}
+
+
+def first_model_id() -> str:
+    """取网关 /v1/models 的第一个模型名。
+
+    写死的模型名（曾经是 deepseek-v4-flash）换台机器/换个上游就可能不存在，
+    所以默认值一律取实时列表。
+    """
+    try:
+        status, data = api_call("/v1/models", "GET", None, timeout=15)
+        for item in (data or {}).get("data") or []:
+            mid = str((item or {}).get("id") or "").strip()
+            if mid:
+                return mid
+    except Exception:
+        pass
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # 作业（后台命令）管理
 # ---------------------------------------------------------------------------
 
@@ -1740,8 +1867,13 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/chat/test":
             # 真实发一条 chat/completions，用于验证网关端到端可用（会消耗一次对话）
-            body = self._read_json()
-            model = str(body.get("model") or "deepseek-v4-flash")
+            model = str(body.get("model") or "").strip()
+            if not model:
+                # 不写死模型名：取 /v1/models 的第一个，避免换台机器报 model not found
+                model = first_model_id()
+                if not model:
+                    return self._json(200, {"status": 0, "elapsed_ms": 0,
+                                            "error": "拿不到模型列表（网关未就绪？）"})
             prompt = str(body.get("prompt") or "你好，请只回复两个字：可用")
             payload = json.dumps({
                 "model": model,
@@ -1800,6 +1932,12 @@ class Handler(BaseHTTPRequestHandler):
             if result.get("ok"):
                 result["scan"] = scan_desktop_logins()
             return self._json(200, result)
+
+        if path == "/api/open-deeplink":
+            # 由本机后端唤起自定义协议（白名单仅 ccswitch:）。
+            # 走 ShellExecute，因此与「面板跑在 exe 还是浏览器里」无关；
+            # 协议没注册时返回明确原因，前端据此弹框提示（而不是静默无反应）。
+            return self._json(200, open_deeplink(body.get("url")))
 
         if path == "/api/pool/remove":
             # 从账号池移除账号：先备份到（面板目录）removed-auths/，再删 auths/ 里的文件。
@@ -1979,6 +2117,8 @@ class Handler(BaseHTTPRequestHandler):
             "auth_file_count": len([a for a in read_auth_files() if a.get("uid")]),
             "local_accounts": read_local_accounts(),
             "desktop_logins": scan_desktop_logins(),
+            # ccswitch:// 协议是「按机器 + 按用户」注册的，必须每次实测（别用写死的说明）
+            "ccswitch": ccswitch_protocol(),
         }
 
 

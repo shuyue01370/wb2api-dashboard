@@ -54,7 +54,7 @@ def build_tasks_exe() -> str:
     from PyInstaller.__main__ import run
 
     args = [
-        "--noconfirm", "--clean",
+        "--noconfirm",
         "--console",                  # 需要 stdout 供面板捕获
         "--onefile",
         "--name", "tasks_all",
@@ -81,7 +81,7 @@ def build_tasks_exe() -> str:
 
 def build_args(tasks_exe: str = "") -> list:
     args = [
-        "--noconfirm", "--clean",
+        "--noconfirm",
         "--noconsole",
         "--onefile",
         "--name", "WorkBuddy2API",
