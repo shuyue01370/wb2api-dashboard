@@ -381,9 +381,11 @@ def main() -> int:
         return 0
 
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    # 日志跟随线程必须在这里起：exe 走的是本函数，而**不会**走 server.main()。
+    # 漏了这一句（2026-09-18 修），「自动切换」页的实时日志与事件时间线会永远空白。
+    server.start_log_threads()
 
     cfg = L.build_native_config()
-    L.rotate_log(gateway_log)
 
     # 先把自己放进 Job：之后创建的网关 / WebView2 自动继承成员身份，
     # 本进程退出时内核一并回收，避免 WebView2 孤儿残留。
@@ -411,6 +413,9 @@ def main() -> int:
         print("[启动] 网关 7863 已在运行，直接复用。", flush=True)
         _write_runtime(runtime_file, None)
     else:
+        # 只在**本次真的新起网关**时轮转。复用已有网关时轮转会把 gateway.log 改名，
+        # 而复用中的那个网关句柄仍指着改名后的文件 → 面板跟随的新文件会永远是空的。
+        L.rotate_log(gateway_log)
         log_fh = open(gateway_log, "ab", buffering=0)
         try:
             proc = _spawn([gateway_exe, "-config", L.NATIVE_CONFIG],

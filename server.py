@@ -1329,6 +1329,21 @@ def preload_logs(lines=200):
             push_event(*parsed)
 
 
+def start_log_threads():
+    """启动「日志跟随」的两个常驻线程：历史日志预灌 + 增量跟随。
+
+    **所有面板入口都必须调用它** —— server.main()（bat / 直接跑 server.py 的形态）
+    与 app.py 的 main()（打包后的 exe 形态）。
+
+    历史 bug（2026-09-18）：这两行原来直接写在 main() 里，而 exe 的入口是 app.py、
+    从不调用 server.main()，于是线程压根没起 —— 「自动切换」页的实时日志与事件时间线
+    永远空白，但 gateway.log 本身在正常增长，看起来像"面板坏了"，其实是没人去读它。
+    抽成函数就是为了让两个入口共用同一处，避免以后只改一边再漏。
+    """
+    threading.Thread(target=preload_logs, daemon=True).start()
+    threading.Thread(target=log_follower, daemon=True).start()
+
+
 # ---------------------------------------------------------------------------
 # 动作构造
 # ---------------------------------------------------------------------------
@@ -2164,8 +2179,7 @@ def main():
     print(" 面板地址  : http://127.0.0.1:%d" % args.port)
     print("-" * 68)
 
-    threading.Thread(target=preload_logs, daemon=True).start()
-    threading.Thread(target=log_follower, daemon=True).start()
+    start_log_threads()
 
     try:
         httpd = Server(("127.0.0.1", args.port), Handler)
