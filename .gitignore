@@ -12,6 +12,13 @@ logs/
 # 面板运行时状态（网关 PID）
 .runtime.json
 
+# 面板自身状态（本机账号拉黑名单等，含本机 uid / 昵称）
+panel-state.json
+panel-state.json.tmp
+
+# 从账号池移除的账号备份（含真实凭据）
+removed-auths/
+
 # Chrome/Edge --app 应用窗口的 user-data-dir（体积极大，且含浏览数据）
 .app-profile/
 

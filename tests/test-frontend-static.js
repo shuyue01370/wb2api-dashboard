@@ -200,6 +200,28 @@ ok(!/esc\(o\.error\s*\|\|/.test(code),
 ok(code.includes('__wb2apiTest'), '暴露了测试钩子，供运行时测试驱动内部渲染函数');
 ok(code.includes('invalid_api_key'), '401（api_key 不一致）有专门的可读提示');
 
+// ---------- 4j. 本机账号拉黑 / 账号池移除 ----------
+ok(code.includes('function blockLocalLogin') && code.includes('data-block='),
+  '本机账号有「拉黑」入口（blockLocalLogin + data-block）');
+ok(code.includes('/api/block-local-login'), '拉黑走同源 /api/block-local-login');
+ok(code.includes('function unblockLocalLogin') && code.includes('data-unblock='),
+  '拉黑名单可查看并手动解除（unblockLocalLogin + data-unblock）');
+ok(code.includes('data-block-list') && code.includes('showBlocked'),
+  '存在「已拉黑」名单开关（S.showBlocked）');
+ok(/rows\s*=\s*rows\.filter\(function\(a\)\{return !blockedUids\[a\.uid\]\}\)/.test(code),
+  '被拉黑的账号在前端会被过滤掉（两个数据源都过滤）');
+ok(code.includes('dl.unblocked'), '重新登录后自动解除的结果会被前端提示一次');
+ok(/blockLocalLogin[\s\S]{0,600}?confirm\(/.test(code), '拉黑有二次确认');
+ok(code.includes('function removePoolAccount') && code.includes('data-pool-remove='),
+  '账号池每行有「移除」按钮（removePoolAccount + data-pool-remove）');
+ok(code.includes('/api/pool/remove'), '移除走同源 /api/pool/remove');
+ok(/removePoolAccount[\s\S]{0,900}?confirm\(/.test(code), '移除有二次确认');
+ok(/removePoolAccount[\s\S]{0,1600}?autoReloadGateway\(\)/.test(code),
+  '移除账号后自动重载网关（立即停止参与选号）');
+ok(code.includes('removed-auths'), '移除时提示了备份位置（removed-auths/）');
+ok(/cols\.map[\s\S]{0,220}?操作<\/th>/.test(code), '账号池表头追加了「操作」列');
+ok(code.includes('colspan="13"'), '账号池空态 colspan 已同步为 13 列');
+
 // ---------- 5. 兜底：不应出现未转义的 </script> 或裸 fetch 跨域 ----------
 ok(!/fetch\(\s*["'`]http:\/\/localhost:7863/.test(code),
    '前端不直接跨域请求 7863（全部走同源 /api/*）');

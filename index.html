@@ -425,7 +425,7 @@ var $=function(s,r){return (r||document).querySelector(s)};
 var $$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
 var S={meta:null,status:null,health:null,models:null,events:[],evSeq:0,logSeq:0,
        log:[],localEv:[],prevState:{},jobs:[],selJob:null,timer:null,countdown:null,
-       tab:"overview",pending:{},jobPending:{},statusTimer:null};
+       tab:"overview",pending:{},jobPending:{},statusTimer:null,showBlocked:false};
 
 /* ---------------- utils ---------------- */
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){
@@ -946,7 +946,8 @@ function renderAccounts(accs,cfg){
             ["left","冷却剩余"],["until","解冻时间"],["reason","原因"],
             ["ls","最近成功"],["le","最近错误"]];
   $("#accHead").innerHTML=cols.map(function(c,i){
-    return '<th class="sortable" data-sort="'+c[0]+'">'+c[1]+(S.sort===c[0]?(S.sortDir>0?" ▲":" ▼"):"")+'</th>'}).join("");
+    return '<th class="sortable" data-sort="'+c[0]+'">'+c[1]+(S.sort===c[0]?(S.sortDir>0?" ▲":" ▼"):"")+'</th>'}).join("")
+    +'<th style="text-align:right">操作</th>';
   var q=($("#accFilter").value||"").toLowerCase();
   var onlyAct=$("#onlyActive").checked;
   var maxC=Math.max.apply(null,[0].concat(accs.map(function(a){return a.credits||0})));
@@ -972,8 +973,8 @@ function renderAccounts(accs,cfg){
     if(r===0)r=String(x.a.uid||"").localeCompare(String(y.a.uid||""));
     return r*dir;
   });
-  if(!rows.length){$("#accBody").innerHTML='<tr><td colspan="12" class="empty">'+
-    (accs.length?"没有匹配的账号":"还没有账号。点上方「登录新账号」添加后，再点「重载账号」。")+'</td></tr>';return}
+  if(!rows.length){$("#accBody").innerHTML='<tr><td colspan="13" class="empty">'+
+    (accs.length?"没有匹配的账号":"还没有账号。点（运维操作区）「打开添加账号窗口」添加，添加后会自动重载网关。")+'</td></tr>';return}
   $("#accBody").innerHTML=rows.map(function(r){
     var a=r.a,st=r.st,sr=r.sr;
     var pct=sr.r==null?0:Math.round(sr.r*100);
@@ -993,6 +994,8 @@ function renderAccounts(accs,cfg){
       '<td class="dim" style="font-size:11px;max-width:190px">'+esc(a.reason||"—")+'</td>'+
       '<td class="dim" style="font-size:11px">'+ago(zeroT(a.last_success)?0:a.last_success)+'</td>'+
       '<td class="dim" style="font-size:11px">'+ago(zeroT(a.last_err)?0:a.last_err)+'</td>'+
+      '<td style="text-align:right"><button class="btn sm" data-pool-remove="'+esc(a.uid||"")+'" '+
+        'title="从账号池移除（文件会备份到 removed-auths/，随后自动重载网关）">移除</button></td>'+
       '</tr>';
   }).join("");
 }
@@ -1026,6 +1029,17 @@ function renderLocalAccounts(){
       is_current:!!a.is_current,in_pool:!!a.in_pool,pool_file:a.pool_file||"",cred:false};
   });
   var rows=Object.keys(merged).map(function(k){return merged[k]});
+  // 拉黑名单：被拉黑的账号一律不显示（两个来源都过滤）。
+  // 服务端按「登录态指纹」判定，该账号在客户端重新登录过 → 自动解除并回报一次。
+  var blocked=(dl&&dl.blocked)||[];
+  var blockedUids={};
+  blocked.forEach(function(b){blockedUids[b.uid]=b});
+  rows=rows.filter(function(a){return !blockedUids[a.uid]});
+  if(dl&&dl.unblocked&&dl.unblocked.length){
+    toast("已在客户端重新登录，自动解除拉黑："+
+      dl.unblocked.map(function(u){return u.nickname||String(u.uid).slice(0,8)}).join("、"),"ok");
+    dl.unblocked=[];      // 只提示一次（服务端下次扫描也不会再返回）
+  }
   // 排序：待抓取（有凭据未入池）→ 当前登录 → 仅身份未入池 → 已入池
   function rank(x){if(x.cred&&!x.in_pool)return 0;if(x.is_current)return 1;if(!x.in_pool)return 2;return 3}
   rows.sort(function(x,y){var d=rank(x)-rank(y);return d!==0?d:String(x.uid).localeCompare(String(y.uid))});
@@ -1033,7 +1047,8 @@ function renderLocalAccounts(){
   var credN=rows.filter(function(a){return a.cred}).length;
   var poolN=rows.filter(function(a){return a.in_pool}).length;
   var todoN=rows.filter(function(a){return a.cred&&!a.in_pool}).length;
-  if(tag)tag.textContent="可抓取 "+credN+" 个 · 已入池 "+poolN+" 个";
+  if(tag)tag.textContent="可抓取 "+credN+" 个 · 已入池 "+poolN+" 个"+
+    (blocked.length?(" · 已拉黑 "+blocked.length+" 个"):"");
 
   var head='<div class="dim" style="font-size:11.5px;line-height:1.85;margin-bottom:9px">'+
     '凭据来源：<span class="mono">'+esc((dl&&dl.dir)||"")+'</span> 下的客户端明文登录态文件'+
@@ -1041,7 +1056,10 @@ function renderLocalAccounts(){
 
   var toolbar='<div style="display:flex;gap:8px;align-items:center;margin-bottom:9px;flex-wrap:wrap">'+
     '<button class="btn primary sm" data-import="all"'+(todoN?'':' disabled')+'>抓取全部入池</button>'+
-    '<span class="dim" style="font-size:11px">抓取写入 auths/ 后，点（运维操作区）「重载账号」让网关加载</span></div>';
+    (blocked.length?('<button class="btn sm" data-block-list>'+
+      (S.showBlocked?"收起已拉黑名单":"已拉黑 "+blocked.length+" 个")+'</button>'):'')+
+    '<span class="dim" style="font-size:11px">抓取后<b>自动重载网关</b>；拉黑的账号不再显示，'+
+    '等它在客户端重新登录会自动恢复</span></div>';
 
   var body=rows.map(function(a){
     var badges='';
@@ -1063,22 +1081,46 @@ function renderLocalAccounts(){
       ?'<button class="btn '+((a.in_pool&&!a.expired)?'':'primary ')+'sm" data-import="'+esc(a.uid)+'">'+
         (a.in_pool?(a.expired?'刷新凭据':'更新凭据'):'抓取入池')+'</button>'
       :'<button class="btn sm" data-login-open>发起授权</button>';
+    var ban='<button class="btn sm" data-block="'+esc(a.uid)+'" '+
+      'title="拉黑后不再显示该账号，直到它在客户端重新登录">拉黑</button>';
     return '<tr>'+
       '<td><div style="font-weight:600">'+esc(a.nickname||"（无昵称）")+'</div>'+
         '<div class="uid">'+esc(a.short)+'…</div></td>'+
       '<td class="dim" style="font-size:11px">'+esc((a.domain||"—").replace(/^www\./,""))+'</td>'+
       '<td>'+badges+'</td>'+
       '<td>'+cred+'</td>'+
-      '<td style="text-align:right">'+act+'</td>'+
+      '<td style="text-align:right;white-space:nowrap">'+
+        '<span style="display:inline-flex;gap:6px">'+act+ban+'</span></td>'+
       '</tr>';
   }).join("");
 
+  var blockPanel='';
+  if(S.showBlocked&&blocked.length){
+    blockPanel='<div style="margin-top:10px;border:1px solid var(--bd);border-radius:var(--radius);'+
+      'padding:10px 12px;background:var(--panel2)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;'+
+      'margin-bottom:7px;flex-wrap:wrap">'+
+      '<b style="font-size:12.5px">已拉黑的本机账号（'+blocked.length+'）</b>'+
+      '<span class="dim" style="font-size:11px">该账号在本机客户端重新登录后会自动移出此名单</span></div>'+
+      '<div class="tblwrap"><table><thead><tr><th>账号</th><th>拉黑时间</th><th></th></tr></thead><tbody>'+
+      blocked.map(function(b){
+        return '<tr><td><div style="font-weight:600">'+esc(b.nickname||"（无昵称）")+'</div>'+
+          '<div class="uid">'+esc(String(b.uid||"").slice(0,8))+'…</div></td>'+
+          '<td class="dim" style="font-size:11px">'+
+            esc(b.blocked_at?new Date(b.blocked_at*1000).toLocaleString("zh-CN",{hour12:false}):"—")+'</td>'+
+          '<td style="text-align:right"><button class="btn sm" data-unblock="'+esc(b.uid)+'">解除</button></td>'+
+          '</tr>';
+      }).join("")+'</tbody></table></div></div>';
+  }
+
   el.innerHTML=head+toolbar+
     '<div class="tblwrap"><table><thead><tr><th>账号</th><th>登录域</th><th>状态</th><th>凭据</th><th></th></tr></thead>'+
-    '<tbody>'+body+'</tbody></table></div>'+
+    '<tbody>'+body+'</tbody></table></div>'+blockPanel+
     '<div class="dim" style="font-size:11px;margin-top:8px">'+
     '「抓取入池」= 把客户端登录态里的 accessToken / refreshToken 写入网关账号池 '+
-    '<span class="mono">auths/workbuddy-&lt;uid&gt;.json</span>；同账号重复抓取为覆盖更新，可当续期用。</div>';
+    '<span class="mono">auths/workbuddy-&lt;uid&gt;.json</span>；同账号重复抓取为覆盖更新，可当续期用。'+
+    '「拉黑」= 只是面板不再显示该账号（不删凭据、不影响账号池），'+
+    '它在客户端重新登录后会自动恢复显示。</div>';
 }
 
 /* 抓取本机客户端凭据入池：target=uid 或 "all" */
@@ -1104,6 +1146,68 @@ function importLocalLogins(target,btn){
   }).then(function(){
     if(btn){btn.disabled=false;btn.innerHTML=oldHtml}
   });
+}
+
+/* 拉黑本机客户端账号：不再显示在列表里，直到它在客户端重新登录（服务端按登录态指纹自动解除） */
+function blockLocalLogin(uid,btn){
+  if(!uid)return;
+  var name="";
+  (((S.meta&&S.meta.desktop_logins)||{}).accounts||[]).forEach(function(a){if(a.uid===uid)name=a.nickname||""});
+  if(!confirm("拉黑后该账号不再显示在「本机 WorkBuddy 客户端」列表里。\n\n"+
+      "它一旦在本机 WorkBuddy 客户端重新登录，会自动恢复显示。\n"+
+      "（只是面板不再展示，不会删除任何凭据，也不影响账号池）\n\n确认拉黑？"))return;
+  var old=btn?btn.innerHTML:"";
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>'}
+  jpost("/api/block-local-login",{uid:uid}).then(function(d){
+    if(!d||!d.ok){toast("拉黑失败："+((d&&d.error)||"未知错误"),"bad");return}
+    if(d.scan&&S.meta)S.meta.desktop_logins=d.scan;
+    S.showBlocked=true;
+    renderLocalAccounts();
+    toast("已拉黑："+(d.nickname||name||String(uid).slice(0,8)),"ok");
+    setActStatus("ok","已拉黑该账号","重新登录后会自动恢复显示；可在「已拉黑」名单里手动解除");
+  }).catch(function(e){toast("拉黑失败："+String(e),"bad")})
+   .then(function(){if(btn){btn.disabled=false;btn.innerHTML=old}});
+}
+
+/* 手动解除拉黑 */
+function unblockLocalLogin(uid,btn){
+  if(!uid)return;
+  var old=btn?btn.innerHTML:"";
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>'}
+  jpost("/api/unblock-local-login",{uid:uid}).then(function(d){
+    if(!d||!d.ok){toast("解除失败："+((d&&d.error)||"未知错误"),"bad");return}
+    if(d.scan&&S.meta)S.meta.desktop_logins=d.scan;
+    renderLocalAccounts();
+    toast("已解除拉黑："+(d.nickname||String(uid).slice(0,8)),"ok");
+  }).catch(function(e){toast("解除失败："+String(e),"bad")})
+   .then(function(){if(btn){btn.disabled=false;btn.innerHTML=old}});
+}
+
+/* 从账号池移除账号：文件备份到（面板目录）removed-auths/，随后自动重载网关 */
+function removePoolAccount(uid,btn){
+  uid=String(uid||"").trim();
+  if(!uid)return;
+  var nick="",file="";
+  ((S.meta&&S.meta.auths)||[]).forEach(function(a){if(a.uid===uid){nick=a.nickname||"";file=a.file||""}});
+  var label=(nick||uid.slice(0,8)+"…")+(file?("  ("+file+")"):"");
+  if(!confirm("将从账号池移除：\n\n  "+label+"\n\n"+
+      "· 文件会先备份到面板目录的 removed-auths/，需要时可以手动放回\n"+
+      "· 移除后自动重载网关，该账号立即停止参与选号\n\n确认移除？"))return;
+  var old=btn?btn.innerHTML:"";
+  if(btn){btn.disabled=true;btn.innerHTML='<span class="spin"></span>移除中'}
+  jpost("/api/pool/remove",{uid:uid}).then(function(d){
+    if(!d||!d.ok){
+      toast("移除失败："+((d&&d.error)||"未知错误"),"bad");
+      setActStatus("bad","移除失败",(d&&d.error)||"账号文件不可操作");
+      return;
+    }
+    toast("已移除："+(d.nickname||uid.slice(0,8)),"ok");
+    setActStatus("ok","已从账号池移除："+(d.nickname||uid.slice(0,8)),
+      "剩余 "+d.remaining+" 个；文件已备份到 removed-auths/，正在自动重载网关…");
+    refreshAll(true);
+    autoReloadGateway();
+  }).catch(function(e){toast("移除失败："+String(e),"bad")})
+   .then(function(){if(btn){btn.disabled=false;btn.innerHTML=old}});
 }
 
 /* ---------------- 自动重载网关 ---------------- */
@@ -1960,8 +2064,12 @@ function bind(){
     // 点遮罩空白处 = 关闭弹窗（并停止轮询）
     if(tgt.id==="loginMask"){loginModalClose();return}
     if(typeof tgt.closest!=="function")return;
-    var el=tgt.closest("[data-act],[data-copy],[data-copy-el],[data-job],[data-sort],[data-tab],[data-test],[data-import],[data-login-open],[data-modal-close],[data-ltab],[data-token-add],[data-open-auth]");
+    var el=tgt.closest("[data-act],[data-copy],[data-copy-el],[data-job],[data-sort],[data-tab],[data-test],[data-import],[data-login-open],[data-modal-close],[data-ltab],[data-token-add],[data-open-auth],[data-block],[data-unblock],[data-block-list],[data-pool-remove]");
     if(!el)return;
+    if(el.hasAttribute("data-block")){blockLocalLogin(el.getAttribute("data-block"),el);return}
+    if(el.hasAttribute("data-unblock")){unblockLocalLogin(el.getAttribute("data-unblock"),el);return}
+    if(el.hasAttribute("data-block-list")){S.showBlocked=!S.showBlocked;renderLocalAccounts();return}
+    if(el.hasAttribute("data-pool-remove")){removePoolAccount(el.getAttribute("data-pool-remove"),el);return}
     if(el.hasAttribute("data-import")){importLocalLogins(el.getAttribute("data-import"),el);return}
     if(el.hasAttribute("data-login-open")){loginModalOpen();return}
     if(el.hasAttribute("data-modal-close")){loginModalClose();return}
@@ -2070,7 +2178,8 @@ window.addEventListener("beforeunload",function(){if(S.timer)clearInterval(S.tim
    这里只暴露无副作用的纯渲染/格式化函数，供 tests/test-frontend-runtime.js 在
    DOM 桩里直接驱动（例如验证错误提示不会渲染成 [object Object]）。
    不参与任何业务逻辑，也不改变线上行为。 */
-window.__wb2apiTest={esc:esc,errText:errText,showAlert:showAlert,hideAlert:hideAlert};
+window.__wb2apiTest={esc:esc,errText:errText,showAlert:showAlert,hideAlert:hideAlert,
+  renderLocalAccounts:renderLocalAccounts,state:S};
 })();
 </script>
 

@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import base64
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -349,6 +350,73 @@ def read_auth_files() -> list:
     return out
 
 
+def panel_dir() -> str:
+    """面板自身的数据目录（与 .runtime.json 同级）。
+
+    **必须是函数而非模块常量**：打包成 exe 后 app.py 会在导入之后把 BASE_DIR 改写成
+    exe 同目录，导入期算出的常量会落在 PyInstaller 的 _MEIPASS 临时目录里
+    （每次启动都变、进程退出即删）。同类坑此前在 API_KEY 上踩过一次。
+    """
+    return BASE_DIR
+
+
+def removed_dir() -> str:
+    """被移除账号的备份目录（**放在面板侧**，不进账号池）。
+
+    刻意不放进 auths/：网关会扫该目录加载账号，多一个子目录属于无谓风险；
+    放这里既不影响网关，也便于用户自己翻回来。
+    """
+    return os.path.join(panel_dir(), "removed-auths")
+
+
+def remove_pool_account(file: str = "", uid: str = "") -> dict:
+    """把账号池里的账号移出：文件先备份到面板的 removed-auths/，再从 auths/ 删除。
+
+    安全约束：只接受 AUTHS_DIR 下形如 `workbuddy-<uid>.json` 的文件名
+    （basename 归一 + 目录越界校验），杜绝路径穿越。
+    """
+    name = os.path.basename(str(file or "").strip())
+    uid = str(uid or "").strip()
+    if not name and uid:
+        name = "workbuddy-%s.json" % uid
+    if not (name.startswith("workbuddy-") and name.endswith(".json")):
+        return {"ok": False, "error": "非法的账号文件名：%s" % (name or "(空)")}
+    path = os.path.normpath(os.path.join(AUTHS_DIR, name))
+    if os.path.dirname(path) != os.path.normpath(AUTHS_DIR):
+        return {"ok": False, "error": "拒绝操作账号池以外的路径"}
+    if not os.path.isfile(path):
+        return {"ok": False, "error": "账号文件不存在：%s" % name}
+
+    nickname = ""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            nickname = ((json.load(fh) or {}).get("account") or {}).get("nickname") or ""
+    except Exception:
+        pass
+
+    backup = ""
+    try:
+        os.makedirs(removed_dir(), exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        backup = os.path.join(removed_dir(), "%s.%s" % (stamp, name))
+        seq = 1
+        while os.path.exists(backup):          # 同秒内多次移除不覆盖
+            backup = os.path.join(removed_dir(), "%s.%d.%s" % (stamp, seq, name))
+            seq += 1
+        os.replace(path, backup)
+    except Exception as exc:
+        return {"ok": False, "error": "移除失败（备份阶段）：%r" % exc}
+
+    return {
+        "ok": True,
+        "uid": uid or name[len("workbuddy-"):-len(".json")],
+        "nickname": nickname,
+        "file": name,
+        "backup": backup,
+        "remaining": len([a for a in read_auth_files() if a.get("uid")]),
+    }
+
+
 def read_local_accounts() -> dict:
     """扫描本机 WorkBuddy 客户端，列出它登录过的账号（只读明文身份，不触碰加密凭据）。
 
@@ -477,6 +545,13 @@ def _desktop_login_from_file(path: str) -> dict | None:
         mtime = os.path.getmtime(path)
     except OSError:
         mtime = 0.0
+    # 登录态指纹（用于「拉黑后重新登录自动解除」）：
+    #   以 refreshToken 为准 —— 实测同一账号多次写入（客户端备份间仅 lastRefreshTime 变化）
+    #   refreshToken / accessToken 均不变，只有真正重新登录才换发新 token。
+    #   没有 refreshToken 时退回 accessToken；两者都无则留空（仅身份条目）。
+    #   不返回 token 本身，只返回截断哈希。
+    fp_src = str(auth.get("refreshToken") or "") or str(auth.get("accessToken") or "")
+    fingerprint = hashlib.sha256(fp_src.encode("utf-8")).hexdigest()[:16] if fp_src else ""
     return {
         "uid": uid,
         "nickname": str(acc.get("nickname") or ""),
@@ -484,21 +559,162 @@ def _desktop_login_from_file(path: str) -> dict | None:
         "expires_at": expires_at,
         "has_refresh": bool(auth.get("refreshToken")),
         "token_sub": str(claims.get("sub") or ""),
+        "fingerprint": fingerprint,
         "file": os.path.basename(path),
         "mtime": mtime,
     }
 
 
-def scan_desktop_logins() -> dict:
+# ---------------------------------------------------------------------------
+# 本机账号拉黑名单（面板侧状态；不写客户端、不写账号池）
+#
+# 语义：拉黑后该账号不再出现在「本机 WorkBuddy 客户端」列表里；
+#       一旦它在客户端**重新登录**（登录态 token 换发 → 指纹变化）就自动解除。
+# 依据：实测同一账号的多次客户端备份，refreshToken / accessToken 均不变
+#       （只有 lastRefreshTime 在变），所以「token 指纹」能区分"重新登录"与"自动续期"。
+# ---------------------------------------------------------------------------
+
+PANEL_STATE_LOCK = threading.Lock()
+BLOCKLIST_KEY = "blocked_local_logins"
+
+
+def panel_state_file() -> str:
+    return os.path.join(panel_dir(), "panel-state.json")
+
+
+def _load_panel_state() -> dict:
+    try:
+        with open(panel_state_file(), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_panel_state(state: dict) -> None:
+    path = panel_state_file()
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(state, fh, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
+
+
+def read_blocklist() -> dict:
+    """当前拉黑名单：{uid: {uid, nickname, fingerprint, blocked_at, source}}。"""
+    with PANEL_STATE_LOCK:
+        blocked = _load_panel_state().get(BLOCKLIST_KEY)
+    return blocked if isinstance(blocked, dict) else {}
+
+
+def blocklist_items() -> list:
+    items = [dict(v) for v in read_blocklist().values() if isinstance(v, dict)]
+    items.sort(key=lambda x: -(x.get("blocked_at") or 0))
+    return items
+
+
+def apply_blocklist(accounts: list) -> tuple:
+    """按拉黑名单过滤本机账号；指纹变化（= 客户端重新登录）时自动解除。
+
+    返回 (保留的账号, 本次自动解除的账号)。
+    """
+    blocked = read_blocklist()
+    if not blocked:
+        return list(accounts), []
+    kept, unblocked, changed = [], [], False
+    for a in accounts:
+        uid = str(a.get("uid") or "")
+        rec = blocked.get(uid)
+        if not rec:
+            kept.append(a)
+            continue
+        if str(rec.get("fingerprint") or "") != str(a.get("fingerprint") or ""):
+            unblocked.append({"uid": uid, "nickname": a.get("nickname") or ""})
+            blocked.pop(uid, None)
+            changed = True
+            kept.append(a)            # 重新登录过 → 恢复显示
+        # else：仍在拉黑中，跳过（不显示）
+    if changed:
+        with PANEL_STATE_LOCK:
+            state = _load_panel_state()
+            state[BLOCKLIST_KEY] = blocked
+            state["updated_at"] = int(time.time())
+            _save_panel_state(state)
+    return kept, unblocked
+
+
+def block_local_login(uid: str) -> dict:
+    """拉黑一个本机客户端账号：从列表隐藏，直到它在客户端重新登录。"""
+    uid = str(uid or "").strip()
+    if not uid:
+        return {"ok": False, "error": "缺少 uid"}
+    hit = None
+    for a in scan_desktop_logins(unfiltered=True).get("accounts") or []:
+        if str(a.get("uid")) == uid:
+            hit = a
+            break
+    if hit is None:
+        # 「仅身份 · 无凭据」的条目（客户端有账号目录、但 auth 目录里没有它的登录态）
+        # 也要能拉黑：指纹留空，等它重新登录产生凭据后指纹变非空 → 自动解除。
+        for a in read_local_accounts().get("accounts") or []:
+            if str(a.get("uid")) == uid:
+                hit = {"uid": uid, "nickname": a.get("nickname") or "",
+                       "fingerprint": "", "file": ""}
+                break
+    if hit is None:
+        return {"ok": False, "error": "该账号不在本机客户端的账号记录里"}
+    with PANEL_STATE_LOCK:
+        state = _load_panel_state()
+        blocked = state.get(BLOCKLIST_KEY)
+        if not isinstance(blocked, dict):
+            blocked = {}
+        blocked[uid] = {
+            "uid": uid,
+            "nickname": hit.get("nickname") or "",
+            "fingerprint": hit.get("fingerprint") or "",
+            "blocked_at": int(time.time()),
+            "source": hit.get("file") or "",
+        }
+        state[BLOCKLIST_KEY] = blocked
+        state["updated_at"] = int(time.time())
+        _save_panel_state(state)
+    return {"ok": True, "uid": uid, "nickname": hit.get("nickname") or "",
+            "blocked_count": len(blocked)}
+
+
+def unblock_local_login(uid: str) -> dict:
+    """手动解除拉黑（用户反悔时用；重新登录则无需手动，会自动解除）。"""
+    uid = str(uid or "").strip()
+    if not uid:
+        return {"ok": False, "error": "缺少 uid"}
+    with PANEL_STATE_LOCK:
+        state = _load_panel_state()
+        blocked = state.get(BLOCKLIST_KEY)
+        if not isinstance(blocked, dict):
+            blocked = {}
+        rec = blocked.pop(uid, None)
+        state[BLOCKLIST_KEY] = blocked
+        state["updated_at"] = int(time.time())
+        _save_panel_state(state)
+    if not rec:
+        return {"ok": False, "error": "该账号不在拉黑名单中"}
+    return {"ok": True, "uid": uid, "nickname": (rec or {}).get("nickname") or "",
+            "blocked_count": len(blocked)}
+
+
+def scan_desktop_logins(unfiltered: bool = False) -> dict:
     """扫描本机客户端登录态（当前文件 + 客户端自动备份），按 uid 去重取最新。
 
     只读。返回脱敏摘要（不含 token 明文）；token 是否过期用 expiresAt 判断。
+    默认会套用拉黑名单（被拉黑的账号不出现在 accounts 里，重新登录后自动恢复）；
+    unfiltered=True 时返回未过滤的全量（供拉黑动作自身核对账号身份）。
     """
     out = {
         "dir": WB_AUTH_DIR,
         "available": False,
         "logged_out": False,
         "accounts": [],
+        "blocked": [],
+        "unblocked": [],
         "note": "",
     }
     if not os.path.isdir(WB_AUTH_DIR):
@@ -542,10 +758,22 @@ def scan_desktop_logins() -> dict:
         accounts.append(info)
     # 排序：当前登录 → 未入池 → uid
     accounts.sort(key=lambda x: (not x["is_current"], x["in_pool"], x["uid"]))
-    out["accounts"] = accounts
-    out["available"] = bool(accounts)
-    if not accounts:
-        out["note"] = "目录存在，但未发现可解析的登录态文件"
+
+    if unfiltered:
+        out["accounts"] = accounts
+        out["blocked"] = blocklist_items()
+        out["available"] = bool(accounts)
+        return out
+
+    kept, unblocked = apply_blocklist(accounts)
+    blocked = blocklist_items()
+    out["accounts"] = kept
+    out["unblocked"] = unblocked
+    out["blocked"] = blocked
+    out["available"] = bool(kept or blocked)
+    if not kept:
+        out["note"] = ("可扫描到的账号均已被拉黑（共 %d 个）" % len(blocked)) if blocked \
+            else "目录存在，但未发现可解析的登录态文件"
     return out
 
 
@@ -1509,6 +1737,29 @@ class Handler(BaseHTTPRequestHandler):
             result = import_desktop_logins(uids, dry_run=dry)
             result["scan"] = scan_desktop_logins()
             return self._json(200, result)
+
+        if path == "/api/block-local-login":
+            # 拉黑本机客户端账号：从「本机 WorkBuddy 客户端」列表隐藏，
+            # 直到该账号在客户端重新登录（登录态指纹变化）自动解除。
+            body = self._read_json()
+            result = block_local_login(body.get("uid"))
+            if result.get("ok"):
+                result["scan"] = scan_desktop_logins()
+            return self._json(200, result)
+
+        if path == "/api/unblock-local-login":
+            # 手动解除拉黑（重新登录时会自动解除，这里供用户反悔）
+            body = self._read_json()
+            result = unblock_local_login(body.get("uid"))
+            if result.get("ok"):
+                result["scan"] = scan_desktop_logins()
+            return self._json(200, result)
+
+        if path == "/api/pool/remove":
+            # 从账号池移除账号：先备份到（面板目录）removed-auths/，再删 auths/ 里的文件。
+            # 前端随后调用 restart 重载网关，使移除立即生效。
+            body = self._read_json()
+            return self._json(200, remove_pool_account(body.get("file"), body.get("uid")))
 
         return self._json(404, {"error": "not found"})
 

@@ -238,16 +238,24 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   ok(poolCount === 0 || numCells.length > 0, '账号表数字单元格已渲染（.num）');
   ok(/,\d{3}/.test(numCells) || !/\d{4,}/.test(numCells.replace(/,/g, '')),
      '积分千分位：≥1000 的值带逗号分隔');
+  ok(poolCount === 0 || H('#accBody').includes('data-pool-remove='),
+     '账号池每行带「移除」按钮（data-pool-remove）');
+  ok(H('#accHead').includes('操作'), '账号池表头含「操作」列');
+  ok(poolCount > 0 || H('#accBody').includes('colspan="13"'),
+     '账号池空态的 colspan 与列数一致');
 
   console.log('  ---- 本机客户端账号 ----');
   const lac = H('#localAccounts');
   ok(lac.length > 0, '本机客户端区块已渲染');
-  ok(lac.includes('已在账号池') || lac.includes('未入池'),
-     '渲染了入池状态（已在账号池 / 未入池）');
+  ok(lac.includes('已在账号池') || lac.includes('未入池') || lac.includes('拉黑'),
+     '渲染了入池状态（已在账号池 / 未入池；全部拉黑时为拉黑提示）');
   ok(!lac.includes('undefined') && !lac.includes('NaN'), '本机客户端区块无 undefined / NaN');
   ok(String(getEl('#localTag').textContent || '').length > 0, '区块角标 #localTag 有内容');
   ok(lac.includes('data-import='), '存在抓取入池按钮（data-import）');
   ok(lac.includes('抓取全部入池'), '存在「抓取全部入池」按钮');
+  ok(lac.includes('data-block=') || !lac.includes('data-import='),
+     '本机账号每行带「拉黑」按钮（data-block）');
+  ok(lac.includes('重新登录'), '拉黑说明文案齐全（重新登录后自动恢复）');
   ok(!lac.includes('eyJ'), '区块不渲染 token 明文（脱敏）');
   if (lac.includes('未入池')) {
     ok(lac.includes('抓取入池') || lac.includes('发起授权'), '未入池账号有对应动作按钮');
@@ -285,6 +293,45 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
     T.hideAlert();
     ok(H('#alertBox') === '', 'hideAlert 能清空提示条');
     ok(String(T.errText(null)) === '' && String(T.errText('a')) === 'a', 'errText 对 null / 字符串的处理正确');
+  }
+
+  console.log('  ---- 本机账号拉黑：前端过滤渲染 ----');
+  // 注入一个「被拉黑」的登录态条目，验证它不再出现在列表里、且提供手动解除入口。
+  // 只改内存里的 S.meta，不调任何接口（绝不改动真实拉黑名单）。
+  if (T && T.state && T.renderLocalAccounts) {
+    const S = T.state;
+    const snap = JSON.stringify((S.meta && S.meta.desktop_logins) || null);
+    const snapFlag = S.showBlocked;
+    try {
+      const dl = JSON.parse(snap || '{}');
+      dl.accounts = dl.accounts || [];
+      if (dl.accounts.length) {
+        const victim = dl.accounts[0];
+        const short = String(victim.uid).slice(0, 8);
+        dl.blocked = [{ uid: victim.uid, nickname: victim.nickname || '', blocked_at: 1790000000 }];
+        S.meta.desktop_logins = dl;
+        S.showBlocked = false;
+        T.renderLocalAccounts();
+        const after = H('#localAccounts');
+        ok(after.indexOf(short) < 0, '被拉黑的账号不再渲染在列表中（' + short + '）');
+        ok(after.includes('已拉黑 1 个'), '角标/按钮提示了「已拉黑 1 个」');
+        S.showBlocked = true;
+        T.renderLocalAccounts();
+        const shown = H('#localAccounts');
+        ok(shown.includes('data-unblock='), '展开「已拉黑」名单后有「解除」按钮');
+        ok(shown.includes(short) || (victim.nickname && shown.includes(victim.nickname)),
+           '已拉黑名单里能看到该账号');
+      } else {
+        ok(true, '当前无本机账号数据（拉黑过滤断言跳过）');
+      }
+    } finally {
+      S.meta.desktop_logins = JSON.parse(snap || '{}');
+      S.showBlocked = snapFlag;
+      T.renderLocalAccounts();
+    }
+    ok(!H('#localAccounts').includes('[object Object]'), '恢复正常后区块无 [object Object]');
+  } else {
+    ok(false, '测试钩子缺少 renderLocalAccounts / state，无法验证拉黑过滤');
   }
 
   console.log('  ---- 一键导入 cc-switch ----');

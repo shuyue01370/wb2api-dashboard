@@ -50,6 +50,10 @@ jobs:
       - name: 鉴权配置重算（api_key）
         run: python tests/test-api-key-refresh.py
 
+      # 本机账号拉黑（重新登录自动解除）与账号池移除（含目录穿越防护）
+      - name: 账号拉黑 / 移除逻辑
+        run: python tests/test-account-actions.py
+
       - name: 校验 index.html 为自包含单文件（无外部资源依赖）
         run: |
           python - <<'PY'
@@ -67,8 +71,9 @@ jobs:
         run: |
           python - <<'PY'
           import os, sys
-          bad_dirs = {"auths", "data", "logs", "dist", "build", "bin", ".workbuddy", ".app-profile"}
-          bad_files = {"config-native.json", ".runtime.json"}
+          bad_dirs = {"auths", "data", "logs", "dist", "build", "bin", ".workbuddy", ".app-profile",
+                      "removed-auths"}
+          bad_files = {"config-native.json", ".runtime.json", "panel-state.json"}
           found = []
           for root, dirs, files in os.walk("."):
               dirs[:] = [d for d in dirs if d not in {".git", "__pycache__"}]
