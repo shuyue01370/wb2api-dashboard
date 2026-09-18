@@ -24,6 +24,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import webbrowser
 from ctypes import wintypes
@@ -175,15 +176,28 @@ def rotate_log(path: str, max_bytes: int = 5 * 1024 * 1024):
 
 
 def wait_healthz(timeout: float = 20.0) -> bool:
+    """等待网关就绪。200 = 有可用账号；503 = 活着但账号池为空 —— 两者都算就绪。
+
+    注意：`urlopen` 对非 2xx 会**直接抛 HTTPError**，所以 503 只能在 except 分支里认，
+    光靠 `r.status in (200, 503)` 是**不可达的分支**。
+
+    历史 bug（2026-09-18）：503 被当成「网关没起来」→ 刚拉起的网关被自己 kill 掉，
+    全新环境（账号池为空）100% 复现，表现为「下载后打开不可用、网关起不来」。
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
+        ready = False
         try:
             with urllib.request.urlopen(
                     "http://127.0.0.1:%d/healthz" % GATEWAY_PORT, timeout=2) as r:
-                if r.status in (200, 503):  # 503 = 活着但没有可服务账号，也算就绪
-                    return True
+                ready = r.status in (200, 503)
+        except urllib.error.HTTPError as exc:
+            ready = exc.code in (200, 503)
         except Exception:
-            time.sleep(0.5)
+            ready = False
+        if ready:
+            return True
+        time.sleep(0.5)
     return False
 
 

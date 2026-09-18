@@ -80,3 +80,23 @@ jobs:
               sys.exit(1)
           print("工作区干净：无凭据 / 日志 / 构建产物 ok")
           PY
+
+  windows-regression:
+    name: Windows 回归测试
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # launcher.py / app.py 顶层依赖 Windows 专属模块，只能在 Windows 上跑
+      # 这两个回归测试守的是两个真实踩过的坑：
+      #   1) healthz 503 被误判成「网关没起来」，把刚拉起的网关杀掉
+      #      （全新环境账号池为空 → 下载 exe 的用户 100% 打不开）
+      #   2) 应用窗口起不来（如缺 WebView2）时异常冒泡，连带杀掉网关
+      - name: healthz 503 判定
+        run: python tests/test-launcher-healthz.py
+
+      - name: 窗口失败兜底
+        run: python tests/test-app-window-fallback.py

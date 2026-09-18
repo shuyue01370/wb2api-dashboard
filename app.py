@@ -27,6 +27,7 @@ import subprocess
 import sys
 import threading
 import time
+import webbrowser
 
 # ---------------------------------------------------------------------------
 # 路径：打包后资源在 _MEIPASS；配置 / 日志 / 运行时数据放 exe 同目录
@@ -66,14 +67,62 @@ PANEL_PORT = int(os.environ.get("WB2API_PANEL_PORT") or L.PANEL_PORT)
 GATEWAY_PORT = L.GATEWAY_PORT
 
 
-def _alert(msg: str, title: str = "WorkBuddy2API"):
-    """无控制台时用系统弹窗把错误告知用户，避免"双击没反应"。"""
+def _alert(msg: str, title: str = "WorkBuddy2API", icon: int = 0x00000010):
+    """无控制台时用系统弹窗把错误告知用户，避免"双击没反应"。
+
+    icon：0x10 = 错误图标，0x40 = 信息图标。弹窗会阻塞到用户点「确定」为止。
+    """
     print(msg, flush=True)
     if FROZEN:
         try:
-            ctypes.windll.user32.MessageBoxW(None, msg, title, 0x00000040)
+            ctypes.windll.user32.MessageBoxW(None, msg, title, icon)
         except Exception:
             pass
+
+
+def _webview2_version():
+    """探测系统 WebView2 运行时版本；未安装返回 None（应用窗口依赖它）。"""
+    try:
+        import winreg
+        for hive, sub in (
+            (winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+            (winreg.HKEY_LOCAL_MACHINE,
+             r"SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+            (winreg.HKEY_CURRENT_USER,
+             r"Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"),
+        ):
+            try:
+                with winreg.OpenKey(hive, sub) as k:
+                    ver, _ = winreg.QueryValueEx(k, "pv")
+                    if ver:
+                        return str(ver)
+            except OSError:
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    base = os.path.join(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+                        "Microsoft", "EdgeWebView", "Application")
+    try:
+        versions = sorted(os.listdir(base), reverse=True)
+        if versions:
+            return versions[0]
+    except OSError:
+        pass
+    return None
+
+
+def _log_env():
+    """把关键环境信息写进 app.log —— 远程排查时用户只要把日志发过来就够。"""
+    try:
+        import platform
+        print("[环境] 系统=%s | 架构=%s" % (platform.platform(), platform.machine()), flush=True)
+        print("[环境] 程序=%s" % (sys.executable if FROZEN else os.path.abspath(__file__)), flush=True)
+        print("[环境] 资源目录=%s | 数据目录=%s" % (BUNDLE_DIR, APP_DIR), flush=True)
+        print("[环境] WebView2=%s" % (_webview2_version()
+              or "未检测到（应用窗口无法显示，将自动回退浏览器模式）"), flush=True)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _find_python() -> str:
@@ -293,6 +342,7 @@ def main() -> int:
         return 1
 
     runtime_file, gateway_log = _apply_paths()
+    _log_env()
 
     gateway_exe = os.path.join(BUNDLE_DIR, "bin", "wb2api.exe")
     if not os.path.isfile(gateway_exe):
@@ -362,7 +412,10 @@ def main() -> int:
                      daemon=True).start()
 
     print("[就绪] 面板 http://127.0.0.1:%d" % PANEL_PORT, flush=True)
-    _run_window()
+    if _run_window():
+        print("[退出] 应用窗口已关闭。", flush=True)
+    else:
+        print("[退出] 浏览器模式结束（用户已确认）。", flush=True)
 
     # ---- 窗口关闭：停守护 → 杀网关 → 停面板服务 → 关 Job（内核回收全部后代）----
     stopping.set()
@@ -385,23 +438,61 @@ def main() -> int:
     return 0
 
 
-def _run_window():
+def _window_fallback(reason: str) -> bool:
+    """窗口不可用时的兜底：把面板交给系统默认浏览器，服务继续运行。
+
+    关键：**不能一失败就直接返回** —— main() 里 _run_window() 之后紧接着就是关停逻辑，
+    直接返回会把刚拉起的网关一起杀掉，把「窗口起不来」放大成「网关也起不来」。
+    （2026-09-18 排查：窗口依赖 WebView2，"没装 WebView2" 的机器症状与健康检查误判
+      完全一样，都表现为「双击打开不可用、网关起不来」。）
+    """
+    wv = _webview2_version()
+    msg = ["无法显示应用窗口，已改为用浏览器打开面板。", "", "原因：%s" % reason]
+    if not wv:
+        msg += ["",
+                "本机没有检测到 WebView2 运行时，应用窗口依赖它渲染界面。",
+                "装一次即可（装完重新打开本程序）：",
+                "https://developer.microsoft.com/microsoft-edge/webview2/"]
+    msg += ["", "面板地址：http://127.0.0.1:%d" % PANEL_PORT,
+            "", "点击「确定」后用默认浏览器打开它。"]
+    _alert("\n".join(msg))
+    try:
+        webbrowser.open("http://127.0.0.1:%d" % PANEL_PORT)
+    except Exception:  # noqa: BLE001
+        pass
+    _alert("网关与面板正在运行，可继续在浏览器里使用。\n\n"
+           "用完后点击「确定」，服务停止并退出本程序。",
+           title="WorkBuddy2API 运行中", icon=0x00000040)
+    return False
+
+
+def _run_window() -> bool:
+    """显示应用窗口。
+
+    返回 True  = 窗口正常显示并已关闭（可以收摊退出）
+    返回 False = 窗口不可用，已回退为浏览器模式（用户已确认用完）
+    """
     try:
         import webview
-    except ImportError:
-        _alert("缺少 pywebview，无法显示窗口。\n\n请先安装：pip install pywebview\n"
-               "或改用 启动面板.bat（浏览器模式）。")
-        return
-    webview.create_window(
-        "WorkBuddy2API 控制面板",
-        "http://127.0.0.1:%d" % PANEL_PORT,
-        width=1320, height=880, min_size=(980, 640),
-        text_select=True,
-    )
+    except ImportError as exc:
+        return _window_fallback("缺少 pywebview：%r" % exc)
     try:
-        webview.start(gui="edgechromium", debug=False)
-    except Exception:  # noqa: BLE001
-        webview.start(debug=False)
+        webview.create_window(
+            "WorkBuddy2API 控制面板",
+            "http://127.0.0.1:%d" % PANEL_PORT,
+            width=1320, height=880, min_size=(980, 640),
+            text_select=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return _window_fallback("创建窗口失败：%r" % exc)
+    try:
+        try:
+            webview.start(gui="edgechromium", debug=False)
+        except Exception:  # noqa: BLE001
+            webview.start(debug=False)
+    except Exception as exc:  # noqa: BLE001
+        return _window_fallback("窗口启动失败：%r" % exc)
+    return True
 
 
 def _open_window_only():
@@ -411,4 +502,16 @@ def _open_window_only():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except SystemExit:
+        raise
+    except Exception:  # noqa: BLE001
+        # 兜底：任何未预料的异常都要落在日志里并弹窗告知，不再「双击没反应」
+        import traceback
+        tb = traceback.format_exc()
+        print(tb, flush=True)
+        last = tb.strip().splitlines()[-1] if tb.strip() else "未知错误"
+        _alert("程序异常退出：\n\n%s\n\n详细日志：%s"
+               % (last, os.path.join(LOGS_DIR, "app.log")))
+        sys.exit(1)
