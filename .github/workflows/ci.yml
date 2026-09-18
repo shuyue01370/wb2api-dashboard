@@ -45,6 +45,11 @@ jobs:
           assert server.REPO, "REPO 解析不得为空"
           PY
 
+      # 守 2026-09-18 的坑：REPO_CFG 在 import 之后被改（app.py 解析便携数据根），
+      # 若不重算 API_KEY，面板就会不带鉴权头请求网关 → 401 → 页面出现 [object Object]
+      - name: 鉴权配置重算（api_key）
+        run: python tests/test-api-key-refresh.py
+
       - name: 校验 index.html 为自包含单文件（无外部资源依赖）
         run: |
           python - <<'PY'

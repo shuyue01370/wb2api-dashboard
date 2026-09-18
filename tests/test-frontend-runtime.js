@@ -92,6 +92,15 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   const H = (key) => (getEl(key)._html || '');
   const has = (key, needle, label) => ok(H(key).includes(needle), label + ' → 含「' + needle + '」');
 
+  // 账号池规模。干净环境（新用户首次运行 / 便携数据根）账号池为空，
+  // 此时账号相关断言应校验「空态」而不是拿本机数据去匹配。
+  let poolCount = 0;
+  try {
+    const st0 = await sandboxFetch(BASE + '/api/status').then(r => r.json());
+    poolCount = Array.isArray(st0.accounts) ? st0.accounts.length : (st0.total || 0);
+  } catch (e) { /* 接口不可用按空池处理 */ }
+  console.log('  （账号池账号数 = ' + poolCount + '）');
+
   console.log('  ---- 渲染产物核对 ----');
   has('#kpis', '账号总数', 'KPI 区');
   has('#kpis', '可服务', 'KPI 区');
@@ -129,8 +138,12 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
     ok(taskCmd.includes('--user root'), 'docker：命令展示含 --user root（容器默认用户读不到 auths）');
   }
   has('#accHead', '状态', '账号表头');
-  has('#accBody', 'shuyue', '账号表已渲染真实账号');
-  has('#accBody', '健康', '账号状态徽标');
+  if (poolCount > 0) {
+    has('#accBody', 'shuyue', '账号表已渲染真实账号');
+    has('#accBody', '健康', '账号状态徽标');
+  } else {
+    ok(H('#accBody').length > 0, '空账号池下账号表渲染了空态（而非空白）');
+  }
   has('#pickSim', '可见权重', '选号模拟区（权重说明）');
   has('#pickSim', '模拟抽签', '选号模拟区（抽签按钮）');
   has('#chain', '① 直接选号', '降级链路第 1 级');
@@ -154,7 +167,11 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   ok(H('#models').includes('共 <b>' + liveIds.length + '</b> 个模型'), '模型数量与接口一致');
   has('#apiHelp', '/v1/chat/completions', '接口示例');
   has('#apiHelp', 'Authorization: Bearer', '接口示例含鉴权头');
-  has('#files', 'workbuddy-', '账号文件区');
+  if (poolCount > 0) {
+    has('#files', 'workbuddy-', '账号文件区');
+  } else {
+    ok(H('#files').length > 0, '空账号池下账号文件区渲染了空态（而非空白）');
+  }
   if (isNative) {
     has('#files', '原生进程（无 Docker）', '运行形态区（native）');
     has('#files', 'PID', '运行形态区显示进程 PID');
@@ -218,7 +235,7 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   // 千分位断言不写死数值（积分随账号使用变化，写死会变假失败）：
   // 规则 = 出现 ≥1000 的值就必须带千分位逗号
   var numCells = (H('#accBody').match(/<td class="num">[\d,]+<\/td>/g) || []).join('');
-  ok(numCells.length > 0, '账号表数字单元格已渲染（.num）');
+  ok(poolCount === 0 || numCells.length > 0, '账号表数字单元格已渲染（.num）');
   ok(/,\d{3}/.test(numCells) || !/\d{4,}/.test(numCells.replace(/,/g, '')),
      '积分千分位：≥1000 的值带逗号分隔');
 
@@ -245,6 +262,30 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   ok(html.includes('id="ltab-token"') && html.includes('id="ltab-local"'), '弹窗三标签页齐全');
   ok(html.includes('data-token-add'), 'Token 粘贴添加入口存在');
   ok(code.includes('loginPollStop') && code.includes('loginModalClose'), '关窗即停止轮询的逻辑存在');
+
+  console.log('  ---- 错误提示渲染（[object Object] 回归）----');
+  // 网关的错误体是对象：{"error":{"code":"invalid_api_key","message":"..."}}
+  // 曾经 showAlert 直接 esc(o.error) → 每个页签顶部都挂着一条 [object Object]
+  const T = sandbox.window.__wb2apiTest;
+  ok(!!T && typeof T.showAlert === 'function', '存在测试钩子 window.__wb2apiTest.showAlert');
+  if (T) {
+    T.showAlert({ error: { code: 'invalid_api_key', message: 'missing or invalid API key' } });
+    const box = H('#alertBox');
+    ok(box.indexOf('[object Object]') < 0, '对象型错误不再渲染成 [object Object]');
+    ok(box.includes('missing or invalid API key') || box.includes('invalid_api_key'),
+       '对象型错误渲染出了可读信息（message / code）');
+    ok(box.includes('api_key 不一致'), '401 场景附带了可操作的提示文案');
+
+    T.showAlert({ error: '普通字符串错误' });
+    ok(H('#alertBox').includes('普通字符串错误'), '字符串型错误正常显示');
+
+    T.showAlert({ error: { code: 'x', nested: { a: 1 } } });
+    ok(H('#alertBox').indexOf('[object Object]') < 0, '无 message 的对象也只输出 JSON，不出 [object Object]');
+
+    T.hideAlert();
+    ok(H('#alertBox') === '', 'hideAlert 能清空提示条');
+    ok(String(T.errText(null)) === '' && String(T.errText('a')) === 'a', 'errText 对 null / 字符串的处理正确');
+  }
 
   console.log('  ---- 一键导入 cc-switch ----');
   let apiPort = 0;

@@ -542,10 +542,31 @@ function loadStatus(){
 function loadHealth(){return jget("/api/health").then(function(d){S.health=d;renderHealth()})}
 function loadModels(){return jget("/api/models").then(function(d){S.models=d;renderModels()})}
 
+/* 把任意形状的错误值压成一行可读文本。
+   网关的错误体是 {"error":{"code":..,"message":..}}（**对象**），
+   直接拼进字符串就会渲染成 `[object Object]` —— 曾经每个页签顶部都挂着这么一条。 */
+function errText(v){
+  if(v==null)return "";
+  if(typeof v==="string")return v;
+  if(typeof v==="object"){
+    var m=v.message||v.msg||v.error||v.code||v.detail||v.type;
+    if(typeof m==="string"&&m)return m;
+    try{return JSON.stringify(v)}catch(e){}
+  }
+  return String(v);
+}
 function showAlert(o){
-  $("#alertBox").innerHTML='<div class="errbox"><b>'+esc(o.error||"错误")+'</b>'+
-    (o.detail?'<div style="margin-top:3px;opacity:.85">'+esc(typeof o.detail==="string"?o.detail:JSON.stringify(o.detail))+'</div>':'')+
-    (o.hint?'<div style="margin-top:5px;opacity:.85">'+esc(o.hint)+'</div>':'')+'</div>';
+  o=o||{};
+  var main=errText(o.error)||"错误";
+  var code=(o.error&&typeof o.error==="object"&&o.error.code)?String(o.error.code):"";
+  if(code&&main.indexOf(code)<0)main=code+"：" + main;
+  var det=o.detail?errText(o.detail):"";
+  var hint=errText(o.hint);
+  if(code==="invalid_api_key")
+    hint=hint||"面板与网关的 api_key 不一致：确认网关启动时用的配置里的 api_key 与面板读到的一致。";
+  $("#alertBox").innerHTML='<div class="errbox"><b>'+esc(main)+'</b>'+
+    (det?'<div style="margin-top:3px;opacity:.85">'+esc(det)+'</div>':'')+
+    (hint?'<div style="margin-top:5px;opacity:.85">'+esc(hint)+'</div>':'')+'</div>';
 }
 function hideAlert(){$("#alertBox").innerHTML=""}
 
@@ -2044,6 +2065,12 @@ refreshAll(false).then(applyAuto);
 setInterval(tickEvents,3000);
 setInterval(tickLogs,4000);
 window.addEventListener("beforeunload",function(){if(S.timer)clearInterval(S.timer)});
+
+/* 测试钩子：本脚本整体包在 IIFE 里，外部拿不到内部函数。
+   这里只暴露无副作用的纯渲染/格式化函数，供 tests/test-frontend-runtime.js 在
+   DOM 桩里直接驱动（例如验证错误提示不会渲染成 [object Object]）。
+   不参与任何业务逻辑，也不改变线上行为。 */
+window.__wb2apiTest={esc:esc,errText:errText,showAlert:showAlert,hideAlert:hideAlert};
 })();
 </script>
 

@@ -190,6 +190,16 @@ ok(_mo && !/window\.open/.test(_mo[0]), '打开弹窗时不自动跳转浏览器
   });
 })();
 
+// ---------- 4i. 错误提示渲染：对象型错误不得变成 [object Object] ----------
+// 网关的错误体是 {"error":{"code":..,"message":..}} 对象。曾经 showAlert 直接
+// esc(o.error)，于是每个页签顶部都挂着一条 [object Object]，且看不到真实原因。
+ok(code.includes('function errText'), '存在错误信息归一化函数 errText');
+ok(/typeof v\s*===\s*"object"/.test(code), 'errText 会处理对象型错误值');
+ok(!/esc\(o\.error\s*\|\|/.test(code),
+  'showAlert 不再直接 esc(o.error)（否则对象型错误会渲染成 [object Object]）');
+ok(code.includes('__wb2apiTest'), '暴露了测试钩子，供运行时测试驱动内部渲染函数');
+ok(code.includes('invalid_api_key'), '401（api_key 不一致）有专门的可读提示');
+
 // ---------- 5. 兜底：不应出现未转义的 </script> 或裸 fetch 跨域 ----------
 ok(!/fetch\(\s*["'`]http:\/\/localhost:7863/.test(code),
    '前端不直接跨域请求 7863（全部走同源 /api/*）');

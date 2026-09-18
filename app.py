@@ -265,6 +265,10 @@ def _apply_paths():
             server.REPO_CFG = json.load(fh)
     except Exception:  # noqa: BLE001
         pass
+    # 关键：换了 REPO_CFG 就必须重算 API_KEY / API_BASE。否则面板会拿着导入期算出的
+    # 空 key 去请求网关 → 401 → 页面顶部出现一条 [object Object]（错误对象被当字符串渲染）。
+    server.refresh_api_config()
+    print("[就绪] 网关鉴权：api_key %s" % ("已设置" if server.API_KEY else "未设置"), flush=True)
 
     os.makedirs(LOGS_DIR, exist_ok=True)
     # login.exe 把登录状态写到「当前盘:\tmp\...」（源码写死 /tmp）

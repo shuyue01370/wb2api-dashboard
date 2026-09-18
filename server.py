@@ -82,14 +82,25 @@ def _load_repo_config() -> dict:
 
 REPO_CFG = _load_repo_config()
 
-_listen = str(REPO_CFG.get("listen") or ":7863")
-try:
-    API_PORT = int(_listen.rsplit(":", 1)[-1])
-except ValueError:
-    API_PORT = 7863
+def refresh_api_config():
+    """按当前 REPO_CFG 重算 API_PORT / API_BASE / API_KEY。
 
-API_KEY = str(REPO_CFG.get("api_key") or "")
-API_BASE = "http://127.0.0.1:%d" % API_PORT
+    **外部改过 REPO_CFG 之后必须调用它。** 典型场景：app.py 先解析出便携数据根，
+    再把该目录下的 config.json 赋给 server.REPO_CFG —— 此时不重算的话，面板会一直
+    拿着「导入期」算出的空 key 去请求网关，被 401 拒绝（网关错误体是
+    `{"error":{...}}` 对象），页面顶部就出现一条 `[object Object]`。
+    """
+    global API_PORT, API_BASE, API_KEY
+    listen = str((REPO_CFG or {}).get("listen") or ":7863")
+    try:
+        API_PORT = int(listen.rsplit(":", 1)[-1])
+    except ValueError:
+        API_PORT = 7863
+    API_BASE = "http://127.0.0.1:%d" % API_PORT
+    API_KEY = str((REPO_CFG or {}).get("api_key") or "")
+
+
+refresh_api_config()
 
 _auth_dir = str(REPO_CFG.get("auth_dir") or "auths")
 AUTHS_DIR = os.path.normpath(os.path.join(REPO, _auth_dir)) if not os.path.isabs(_auth_dir) else _auth_dir
