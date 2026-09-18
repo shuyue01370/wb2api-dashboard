@@ -206,6 +206,17 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   ok(H('#apiHelp').includes('id="chatModel"') && H('#apiHelp').includes('id="modelOpts"'),
      '对话测试带模型选择（沿用 fillModelOptions 的 datalist）');
   ok(H('#apiTestOut').includes('测试此接口'), '接口测试结果区有初始引导文案');
+  console.log('  ---- 服务端响应格式（任何 API 路径都必须是 JSON，不能是 HTML 错误页）----');
+  for (const p of ['/api/__nope__', '/api/job?id=__nope__']) {
+    try {
+      const r = await sandboxFetch(BASE + p);
+      const t = await r.text();
+      ok(r.headers.get('content-type').indexOf('application/json') >= 0 && t.trim().startsWith('{'),
+         p + ' → HTTP ' + r.status + ' 且响应体是 JSON');
+    } catch (e) {
+      ok(false, p + ' 请求失败：' + e.message);
+    }
+  }
   try {
     const pr = await sandboxFetch(BASE + '/api/probe?ep=healthz').then(r => r.json());
     ok(pr && pr.path === '/healthz' && typeof pr.elapsed_ms === 'number',

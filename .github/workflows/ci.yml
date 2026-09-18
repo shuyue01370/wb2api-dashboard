@@ -54,6 +54,10 @@ jobs:
       - name: 账号拉黑 / 移除逻辑
         run: python tests/test-account-actions.py
 
+      # HTTP keep-alive 下未读完的请求体会污染下一个请求（501 HTML → 前端 JSON 解析失败）
+      - name: HTTP 长连接 / 响应格式
+        run: python tests/test-http-keepalive.py
+
       - name: 校验 index.html 为自包含单文件（无外部资源依赖）
         run: |
           python - <<'PY'

@@ -476,10 +476,24 @@ function copy(text,label){
     ta.remove();
   }
 }
-function jget(url){return fetch(url,{cache:"no-store"}).then(function(r){return r.json()})}
-function jpost(url,body){return fetch(url,{method:"POST",cache:"no-store",
-  headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})})
-  .then(function(r){return r.json()})}
+/* 统一请求：能被 JSON.parse 解析就返回对象；否则抛出一条**可读**的错误。
+   直接 r.json() 时，一旦服务端回了 HTML（曾经的 501 错误页），前端只能报
+   `SyntaxError: Unexpected token '<', "<!DOCTYPE " is not valid JSON`——看不到状态码、
+   也看不到原因。这里把 HTTP 状态码与响应体片段带进错误信息。 */
+function jreq(url,opts){
+  return fetch(url,opts).then(function(r){
+    return r.text().then(function(t){
+      try{return JSON.parse(t)}
+      catch(e){
+        throw new Error("HTTP "+r.status+" 响应不是 JSON："+
+          String(t).replace(/\s+/g," ").slice(0,140));
+      }
+    });
+  });
+}
+function jget(url){return jreq(url,{cache:"no-store"})}
+function jpost(url,body){return jreq(url,{method:"POST",cache:"no-store",
+  headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})})}
 
 /* ---------------- account state ---------------- */
 // 口径严格对齐 Go 端 pool.statusOf / CountsDetailed：

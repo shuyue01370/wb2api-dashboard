@@ -1211,15 +1211,22 @@ def mount(p: str) -> str:
 
 
 def build_action(action: str, params: dict):
-    """统一返回 (title, argv, cwd, display, on_finish, env) 或 (None, error)。
+    """统一返回 6 元组 (title, argv, cwd, display, on_finish, env)；**不支持时 argv=None**。
+
     on_finish：可选回调 (job_dict)，native 登录动作用它解析 poll 输出并落盘 auth 文件。
-    env：可选环境变量（native 的 tasks_all 需要注入 WB2API_SCRIPTS / WB2API_AUTHS）。"""
-    if NATIVE:
-        return build_action_native(action, params)
-    r = build_action_docker(action, params)
-    if r[0] is None:
-        return (r[0], r[1])
-    return (r[0], r[1], r[2], r[3], None, None)
+    env：可选环境变量（native 的 tasks_all 需要注入 WB2API_SCRIPTS / WB2API_AUTHS）。
+
+    归一化的原因：native 分支过去直接把 build_action_native() 的返回值透传，
+    而它在「缺二进制 / 不支持的动作」时返回的是 (None, error) 两元组 —— 调用方按
+    六元组拆包会抛 ValueError，连接被直接掐断（无任何响应），比报个错更难排查。
+    """
+    r = build_action_native(action, params) if NATIVE else build_action_docker(action, params)
+    if len(r) == 6:
+        return r
+    if len(r) == 4:                       # docker 分支：(title, argv, cwd, display)
+        return (r[0], r[1], r[2], r[3], None, None)
+    err = r[1] if len(r) > 1 and r[1] else "不支持的动作：%s" % action   # (None, error)
+    return (err, None, None, None, None, None)
 
 
 def build_action_native(action: str, params: dict):
@@ -1603,18 +1610,47 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, status: int, obj):
         self._send(status, json.dumps(obj, ensure_ascii=False).encode("utf-8"))
 
+    def send_error(self, code, message=None, explain=None):  # noqa: N802
+        """协议级错误也回 JSON（默认实现会发一张 HTML 错误页）。
+
+        默认的 HTML 错误页会让前端 r.json() 只报
+        `Unexpected token '<', "<!DOCTYPE " is not valid JSON`，
+        真实原因（如 501 Unsupported method）被完全盖掉 —— 这个坑踩过一次。
+        """
+        try:
+            title = "Error"
+            try:
+                title = self.responses[code][0]
+            except Exception:
+                pass
+            payload = {"error": message or title, "http_status": int(code)}
+            if explain:
+                payload["detail"] = explain
+            self.close_connection = True
+            self._json(code, payload)
+        except Exception:
+            BaseHTTPRequestHandler.send_error(self, code, message, explain)
+
+    # 请求体缓存：保证「同一次请求里读第二次不会阻塞」。
+    # do_POST 会在最顶部无条件调用一次（见那边的注释），各路由再调也只是取缓存。
+    _body_cache = None
+
     def _read_json(self, limit: int = 1 << 20):
+        if self._body_cache is not None:
+            return self._body_cache
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = 0
         if length <= 0:
-            return {}
+            self._body_cache = {}
+            return self._body_cache
         raw = self.rfile.read(min(length, limit))
         try:
-            return json.loads(raw.decode("utf-8"))
+            self._body_cache = json.loads(raw.decode("utf-8"))
         except Exception:
-            return {}
+            self._body_cache = {}
+        return self._body_cache
 
     # --- 路由 -----------------------------------------------------------
     def do_GET(self):  # noqa: N802
@@ -1666,9 +1702,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         path = urlparse(self.path).path
+        # 每个请求重置请求体缓存：Handler 实例是按「连接」复用的（keep-alive），
+        # 不清空就会把上一个请求的 body 当成这一次的。
+        self._body_cache = None
+        # 必须先无条件把请求体读干净。protocol_version 是 HTTP/1.1，浏览器会复用同一条
+        # 长连接；任何「不读 body 就直接 return」的路由都会把 body 留在 socket 缓冲里，
+        # 下一个请求的请求行前面就粘上了这些字节 → 服务端按方法名 `{}POST` 找不到处理函数
+        # → 501（HTML 错误页）→ 前端 r.json() 报
+        # `Unexpected token '<', "<!DOCTYPE " is not valid JSON`。
+        # 精确定位过：/api/login/begin 与 /api/login/check 就是直接 return 没读 body，
+        # 而前端 jpost 对它们恒定发送 `{}`；OAuth 登录成功后的下一次请求
+        # （正是 /api/run 的「重载账号」）因此必挂。
+        body = self._read_json()
 
         if path == "/api/run":
-            body = self._read_json()
             action = str(body.get("action") or "")
             title, argv, cwd, display, on_finish, env = build_action(action, body)
             if argv is None:
@@ -1678,7 +1725,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, public_job(job))
 
         if path == "/api/job/stop":
-            body = self._read_json()
             jid = str(body.get("id") or "")
             with JOBS_LOCK:
                 job = JOBS.get(jid)

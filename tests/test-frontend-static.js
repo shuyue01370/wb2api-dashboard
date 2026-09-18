@@ -222,6 +222,16 @@ ok(code.includes('removed-auths'), '移除时提示了备份位置（removed-aut
 ok(/cols\.map[\s\S]{0,220}?操作<\/th>/.test(code), '账号池表头追加了「操作」列');
 ok(code.includes('colspan="13"'), '账号池空态 colspan 已同步为 13 列');
 
+// ---------- 4k. 请求层：非 JSON 响应必须给出可读错误 ----------
+// 曾经的坑：服务端回了 HTML（501 错误页），前端 r.json() 只能报
+// `SyntaxError: Unexpected token '<', "<!DOCTYPE " is not valid JSON`，状态码/原因全丢。
+ok(code.includes('function jreq'), '请求统一走 jreq（能识别非 JSON 响应）');
+ok(/function jget\(url\)\{return jreq\(/.test(code) && /function jpost\(url,body\)\{return jreq\(/.test(code),
+  'jget / jpost 都改走 jreq');
+ok(!/return r\.json\(\)/.test(code), '不再直接 r.json()（那会丢掉状态码与响应体）');
+ok(code.includes('响应不是 JSON'), '非 JSON 响应会把状态码与响应体片段带进错误信息');
+ok(/\.then\(function\(r\)\{[\s\S]{0,80}return r\.text\(\)/.test(code), 'jreq 先取 text 再自行 JSON.parse');
+
 // ---------- 5. 兜底：不应出现未转义的 </script> 或裸 fetch 跨域 ----------
 ok(!/fetch\(\s*["'`]http:\/\/localhost:7863/.test(code),
    '前端不直接跨域请求 7863（全部走同源 /api/*）');
